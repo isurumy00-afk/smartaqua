@@ -2,26 +2,26 @@
   "temperature": {
     "value": null,
     "unit": "C",
-    "timestamp": "2026-08-13T11:14:44.555398+00:00",
+    "timestamp": "2026-08-13T11:24:27.279511+00:00",
     "source": "arduino_serial"
   },
   "ph": {
     "value": null,
     "unit": "pH",
-    "timestamp": "2026-08-13T11:14:44.555398+00:00",
+    "timestamp": "2026-08-13T11:24:27.279511+00:00",
     "source": "arduino_serial"
   },
   "turbidity": {
     "value": null,
     "unit": "NTU",
-    "timestamp": "2026-08-13T11:14:44.555398+00:00",
+    "timestamp": "2026-08-13T11:24:27.279511+00:00",
     "source": "arduino_serial"
   },
   "ionconcentration": {
     "value": null,
     "unit": "us/cm",
-    "timestamp": "2026-08-13T11:14:44.556471+00:00",
+    "timestamp": "2026-08-13T11:24:27.280759+00:00",
     "error": "No module named 'pymodbus'"
   },
-  "timestamp": "2026-08-13T11:14:44.560536+00:00"
+  "timestamp": "2026-08-13T11:24:27.282369+00:00"
 }

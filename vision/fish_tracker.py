@@ -2,15 +2,11 @@
 
 Tracks fish in Camera 1 side-view frames using a pure ONNX Runtime pipeline,
 maintaining identity, bounding boxes, centre points, trajectory history, and
-speed across frames.
-
-Uses an asynchronous background worker thread for ONNX inference to achieve
-non-blocking zero-latency tracking calls and silky-smooth 30 FPS video playback.
+speed across frames synchronously on the main thread.
 """
 
 import math
 import time
-import threading
 from typing import List, Dict, Any
 
 import numpy as np
@@ -20,10 +16,6 @@ from utils.logger import get_logger
 
 LOG = get_logger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Pure-numpy NMS helper
-# ---------------------------------------------------------------------------
 
 def _nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float = 0.45) -> List[int]:
     """Non-maximum suppression (numpy, no torch dependency)."""
@@ -49,12 +41,8 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float = 0.45) -> 
     return kept
 
 
-# ---------------------------------------------------------------------------
-# Tracker
-# ---------------------------------------------------------------------------
-
 class FishTracker:
-    """YOLOv8 ONNX fish tracker with asynchronous non-blocking inference."""
+    """YOLOv8 ONNX fish tracker running synchronously on the main thread."""
 
     def __init__(self):
         self.session = None
@@ -63,14 +51,6 @@ class FishTracker:
         self.fish_states: Dict[int, Dict[str, Any]] = {}
         self.last_timestamp: float = time.time()
         self._next_id: int = 1
-
-        # Async inference thread controls
-        self._lock = threading.Lock()
-        self._pending_frame = None
-        self._latest_tracks: List[Dict[str, Any]] = []
-        self._running = True
-        self._worker_thread = None
-        self._start_worker()
 
     def _load_model(self) -> bool:
         """Lazy-load ONNX session once."""
@@ -110,34 +90,11 @@ class FishTracker:
             self.session = None
             return False
 
-    def _start_worker(self) -> None:
-        """Start background inference worker thread."""
-        if self._worker_thread is None or not self._worker_thread.is_alive():
-            self._running = True
-            self._worker_thread = threading.Thread(target=self._inference_loop, daemon=True)
-            self._worker_thread.start()
+    def track(self, frame) -> List[Dict[str, Any]]:
+        """Run ONNX fish detection & tracking synchronously on the main thread."""
+        if frame is None:
+            return []
 
-    def _inference_loop(self) -> None:
-        """Background thread loop running ONNX inference asynchronously."""
-        while self._running:
-            frame_to_process = None
-            with self._lock:
-                if self._pending_frame is not None:
-                    frame_to_process = self._pending_frame
-                    self._pending_frame = None
-
-            if frame_to_process is None:
-                time.sleep(0.01)
-                continue
-
-            # Execute model inference
-            tracks = self._run_onnx_inference(frame_to_process)
-            with self._lock:
-                if tracks:
-                    self._latest_tracks = tracks
-
-    def _run_onnx_inference(self, frame) -> List[Dict[str, Any]]:
-        """Run actual ONNX model inference on frame."""
         if not self._load_model():
             return []
 
@@ -158,11 +115,11 @@ class FishTracker:
                 rgb.transpose(2, 0, 1)[np.newaxis, :].astype(np.float32) / 255.0
             )
 
-            # Inference
+            # Synchronous ONNX Inference on main thread
             outputs = self.session.run(None, {self.input_name: blob})
             raw = outputs[0][0].T    # → (A, 4+C)
 
-            boxes_xywh = raw[:, :4]               # cx, cy, w, h — model space
+            boxes_xywh = raw[:, :4]               # cx, cy, w, h
             class_probs = raw[:, 4:]              # (A, C)
             class_ids = class_probs.argmax(axis=1)
             scores = class_probs.max(axis=1)
@@ -170,7 +127,6 @@ class FishTracker:
             # Confidence filter
             mask = scores >= FISH_CONFIDENCE
             if not mask.any():
-                # Check for synthetic bounding boxes fallback if active
                 from master import SIDE_CAMERA
                 syn_boxes = getattr(SIDE_CAMERA, 'synthetic_boxes', None)
                 if syn_boxes:
@@ -208,22 +164,6 @@ class FishTracker:
         except Exception as exc:
             LOG.error("YOLOv8 ONNX tracking inference error: %s", exc)
             return []
-
-    def track(self, frame) -> List[Dict[str, Any]]:
-        """Non-blocking track call (0ms latency).
-        
-        Submits frame to background worker for ONNX inference and immediately
-        returns current tracked fish list to maintain 30 FPS rendering.
-        """
-        if frame is None:
-            return []
-
-        # Pass frame to background worker if idle
-        with self._lock:
-            if self._pending_frame is None:
-                self._pending_frame = frame.copy()
-
-            return list(self._latest_tracks)
 
     def _assign_ids(
         self,

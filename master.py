@@ -155,23 +155,21 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
             fish_scores.append(score)
 
             # 1. Draw colored bounding box matching stress state (Green / Yellow / Red)
-            cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
+            cv2.rectangle(vis, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
 
-            # 2. Draw 3 lines of tags above bounding box
-            tag1 = f"ID {tid} | {speed:.1f} px/s"
-            tag2 = f"{label} ({score:.2f})"
-            tag3 = f"{reason}"
-
-            cv2.putText(vis, tag1, (x1, max(y1 - 45, 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.50, color, 2)
-            cv2.putText(vis, tag2, (x1, max(y1 - 25, 40)), cv2.FONT_HERSHEY_SIMPLEX, 0.50, color, 2)
-            cv2.putText(vis, tag3, (x1, max(y1 - 5, 60)), cv2.FONT_HERSHEY_SIMPLEX, 0.50, color, 2)
+            # 2. Draw 3 lines of tags above bounding box matching exact user offsets
+            for text, y in ((f"ID {tid} | {speed:.1f} px/s", y1 - 65),
+                            (f"{label} ({score:.2f})", y1 - 45),
+                            (reason, y1 - 25)):
+                cv2.putText(vis, text, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.50, color, 2)
 
     # ── Whole Tank Stress Status ──
     tank_score, tank_label, tank_color = classify_tank_stress(fish_scores)
 
-    # Top-left Tank Stress Header
-    cv2.putText(vis, f"Tank Stress: {tank_label} ({tank_score:.2f})", (10, 35),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.75, tank_color, 2)
+    # Top-left Tank Stress Header matching user layout
+    cv2.putText(vis, f"Tank Stress: {tank_label} ({tank_score:.2f})", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, tank_color, 2)
 
     # Top-right Countdown Timer & FPS readout
     mins = int(remaining_secs // 60)
