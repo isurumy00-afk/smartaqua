@@ -18,6 +18,7 @@ from config import (
     FREEZE_SPEED_THRESHOLD,
     ABNORMAL_SPEED_THRESHOLD,
     ABNORMAL_SPEED_DURATION,
+    USE_ASYNC_TRACKER,
 )
 from health.watchdog import Watchdog
 from storage.json_store import load_json, save_json
@@ -239,7 +240,8 @@ def stage_sensors_and_stress():
     actual_dt = 0.033
     tracks = []
 
-    print(f"  |-- Starting 3-minute visual stress observation at ~30 FPS (press 'q' to skip)...")
+    mode_str = "Multi-Threaded Async (30 FPS)" if USE_ASYNC_TRACKER else "Synchronous Single-Threaded"
+    print(f"  |-- Starting 3-minute visual stress observation [{mode_str}] (press 'q' to skip)...")
 
     try:
         while True:

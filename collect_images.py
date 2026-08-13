@@ -122,11 +122,20 @@ def main():
         if saved_count >= TARGET_IMAGE_COUNT:
             print("=" * 60)
             print(f" SUCCESS: Target reached! {saved_count} images collected in {DATASET_DIR}")
+            print(" Starting automated dataset labeling, YOLOv8 training & ONNX export...")
             print("=" * 60)
             break
 
     cap.release()
     cv2.destroyAllWindows()
+
+    # Automatically launch pipeline (autolabeling -> YOLOv8 training -> ONNX export)
+    try:
+        from train_yolo_pipeline import autolabel_dataset, train_and_export_onnx
+        if autolabel_dataset():
+            train_and_export_onnx(epochs=50, imgsz=640)
+    except Exception as exc:
+        print(f"[INFO] Collection completed. Run python train_yolo_pipeline.py to train: {exc}")
 
 
 if __name__ == "__main__":

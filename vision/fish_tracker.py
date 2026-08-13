@@ -2,16 +2,21 @@
 
 Tracks fish in Camera 1 side-view frames using a pure ONNX Runtime pipeline,
 maintaining identity, bounding boxes, centre points, trajectory history, and
-speed across frames synchronously on the main thread.
+speed across frames.
+
+Supports both:
+  1. Synchronous single-threaded execution (default, keeping current method unchanged).
+  2. Optional multi-threaded background inference for smooth 30 FPS playback.
 """
 
 import math
 import time
-from typing import List, Dict, Any
+import threading
+from typing import List, Dict, Any, Optional
 
 import numpy as np
 
-from config import FISH_CONFIDENCE, FISH_MODEL_ONNX_PATH, MAX_TRACKED_FISH
+from config import FISH_CONFIDENCE, FISH_MODEL_ONNX_PATH, MAX_TRACKED_FISH, USE_ASYNC_TRACKER
 from utils.logger import get_logger
 
 LOG = get_logger(__name__)
@@ -42,15 +47,61 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float = 0.45) -> 
 
 
 class FishTracker:
-    """YOLOv8 ONNX fish tracker running synchronously on the main thread."""
+    """YOLOv8 ONNX fish tracker supporting optional multi-threaded background inference."""
 
-    def __init__(self):
+    def __init__(self, async_mode: Optional[bool] = None):
         self.session = None
         self.input_name: str = ""
         self.input_shape: tuple = (640, 640)
         self.fish_states: Dict[int, Dict[str, Any]] = {}
         self.last_timestamp: float = time.time()
         self._next_id: int = 1
+
+        # Optional multi-threaded async controls
+        self.async_mode: bool = USE_ASYNC_TRACKER if async_mode is None else async_mode
+        self._lock = threading.Lock()
+        self._pending_frame = None
+        self._latest_tracks: List[Dict[str, Any]] = []
+        self._running = False
+        self._worker_thread = None
+
+        if self.async_mode:
+            self._start_worker()
+
+    def set_async_mode(self, enabled: bool) -> None:
+        """Enable or disable multi-threaded background inference at runtime."""
+        with self._lock:
+            self.async_mode = enabled
+            if enabled:
+                self._start_worker()
+            else:
+                self._running = False
+        LOG.info("FishTracker async multi-threaded mode set to: %s", enabled)
+
+    def _start_worker(self) -> None:
+        """Start background worker thread for multi-threaded inference."""
+        if self._worker_thread is None or not self._worker_thread.is_alive():
+            self._running = True
+            self._worker_thread = threading.Thread(target=self._inference_loop, daemon=True)
+            self._worker_thread.start()
+
+    def _inference_loop(self) -> None:
+        """Background thread loop running ONNX inference asynchronously."""
+        while self._running:
+            frame_to_process = None
+            with self._lock:
+                if self._pending_frame is not None:
+                    frame_to_process = self._pending_frame
+                    self._pending_frame = None
+
+            if frame_to_process is None:
+                time.sleep(0.01)
+                continue
+
+            tracks = self._run_onnx_inference(frame_to_process)
+            with self._lock:
+                if tracks:
+                    self._latest_tracks = tracks
 
     def _load_model(self) -> bool:
         """Lazy-load ONNX session once."""
@@ -90,11 +141,28 @@ class FishTracker:
             self.session = None
             return False
 
-    def track(self, frame) -> List[Dict[str, Any]]:
-        """Run ONNX fish detection & tracking synchronously on the main thread."""
+    def track(self, frame, async_mode: Optional[bool] = None) -> List[Dict[str, Any]]:
+        """Track fish in frame.
+        
+        If async_mode is True, passes frame to background worker thread (0ms latency, 30 FPS playback).
+        If async_mode is False (default), runs synchronously on the main thread (unchanged).
+        """
         if frame is None:
             return []
 
+        use_async = self.async_mode if async_mode is None else async_mode
+
+        if use_async:
+            self._start_worker()
+            with self._lock:
+                if self._pending_frame is None:
+                    self._pending_frame = frame.copy()
+                return list(self._latest_tracks)
+        else:
+            return self._run_onnx_inference(frame)
+
+    def _run_onnx_inference(self, frame) -> List[Dict[str, Any]]:
+        """Run actual ONNX model inference on frame."""
         if not self._load_model():
             return []
 
@@ -115,7 +183,7 @@ class FishTracker:
                 rgb.transpose(2, 0, 1)[np.newaxis, :].astype(np.float32) / 255.0
             )
 
-            # Synchronous ONNX Inference on main thread
+            # ONNX Inference
             outputs = self.session.run(None, {self.input_name: blob})
             raw = outputs[0][0].T    # → (A, 4+C)
 
