@@ -180,8 +180,10 @@ def stage_sensors_and_stress():
             # Capture frame & run YOLOv8 fish tracking
             frame = SIDE_CAMERA.read()
             if frame is None:
-                time.sleep(0.1)
-                continue
+                import numpy as np
+                frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(frame, "CAMERA FEED UNAVAILABLE", (150, 240),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
             tracks = FISH_TRACKER.track(frame)
             frame_h = frame.shape[0]
@@ -201,7 +203,7 @@ def stage_sensors_and_stress():
             )
             cv2.imshow(WINDOW_NAME, vis_frame)
 
-            key = cv2.waitKey(1) & 0xFF
+            key = cv2.waitKey(30) & 0xFF
             if key == ord('q'):
                 print("  |-- Observation terminated early by user.")
                 break
