@@ -1,9 +1,19 @@
 """Stress Classifier module.
 
-Calculates individual fish stress level based on:
-1. Bottom Dwelling & Stay (40%)
-2. Top Feeding Area Activity (35%)
-3. Freezing / Spatial Immobility (25%)
+Calculates individual fish stress level based on 3 behavioral categories and 9 measurable features:
+1. Bottom Dwelling & Stay (Weight: 35%)
+   - % time in bottom zone
+   - Longest bottom stay
+   - Number of bottom entries
+
+2. Top Feeding Area Activity (Weight: 35%)
+   - % time in top zone
+   - Top visits/min
+   - Time between top visits
+
+3. Freezing / Spatial Immobility (Weight: 30%)
+   - Immobility duration
+   - Immobility events/min
 """
 
 from typing import Dict, Any, List, Tuple
@@ -18,37 +28,51 @@ def classify_stress(
     bottom_time: float,
     freeze_time: float,
     longest_bottom: float,
+    bottom_entries: int,
     surface_visits: int,
+    time_between_top_visits: float,
+    immobility_events: int,
     total_time: float,
     current_region: str = None,
 ) -> Tuple[float, str, Tuple[int, int, int], str]:
-    """Determine individual fish stress level based on bottom dwelling, top feeding, and freezing immobility."""
+    """Determine individual fish stress using all 9 behavioral features."""
     if total_time <= 0:
         return 0.0, "Healthy", (0, 255, 0), "Normal"
 
+    minutes = max(total_time / 60.0, 0.05)
     bottom_ratio = bottom_time / total_time
     top_ratio = top_time / total_time
 
-    # 1. Bottom Dwelling Score (Weight: 0.40)
-    bottom_score = min(bottom_ratio / 0.60, 1.0)
+    # ── Category 1: Bottom Dwelling & Stay (Weight: 35%) ──
+    f1_bottom_pct = min(bottom_ratio / 0.60, 1.0)
     if current_region != "bottom":
-        bottom_score *= 0.5
-    bottom_stay_score = min(longest_bottom / 20.0, 1.0)
-    bottom_component = 0.28 * bottom_score + 0.12 * bottom_stay_score
+        f1_bottom_pct *= 0.5
+    f2_longest_stay = min(longest_bottom / 20.0, 1.0)
+    f3_bottom_entries = min((bottom_entries / minutes) / 6.0, 1.0)
 
-    # 2. Top Feeding Area Activity (Weight: 0.35) - Low surface activity indicates stress
-    top_activity_score = min(top_ratio / 0.30, 1.0)
-    visit_score = min(surface_visits / 10.0, 1.0)
-    top_component = 0.35 * (1.0 - (0.7 * top_activity_score + 0.3 * visit_score))
+    bottom_score = 0.45 * f1_bottom_pct + 0.35 * f2_longest_stay + 0.20 * f3_bottom_entries
+    bottom_component = 0.35 * bottom_score
 
-    # 3. Freezing / Spatial Immobility (Weight: 0.25)
-    freeze_score = min(freeze_time / 15.0, 1.0)
-    freeze_component = 0.25 * freeze_score
+    # ── Category 2: Top Feeding Area Activity (Weight: 35%) ──
+    f4_top_pct = min(top_ratio / 0.30, 1.0)
+    f5_top_visits_rate = min((surface_visits / minutes) / 4.0, 1.0)
+    f6_time_between_visits = min(time_between_top_visits / 45.0, 1.0)
 
+    top_activity_score = 0.45 * f4_top_pct + 0.35 * f5_top_visits_rate + 0.20 * (1.0 - f6_time_between_visits)
+    top_component = 0.35 * (1.0 - top_activity_score)
+
+    # ── Category 3: Freezing / Spatial Immobility (Weight: 30%) ──
+    f7_immobility_dur = min(freeze_time / 15.0, 1.0)
+    f8_immobility_events_rate = min((immobility_events / minutes) / 3.0, 1.0)
+
+    freeze_score = 0.60 * f7_immobility_dur + 0.40 * f8_immobility_events_rate
+    freeze_component = 0.30 * freeze_score
+
+    # ── Overall Stress Score & Primary Stress Reason ──
     components = {
-        "Bottom Dwelling": bottom_component,
+        "Bottom Dwelling & Stay": bottom_component,
         "Low Top Feeding Activity": top_component,
-        "Freezing Motion": freeze_component,
+        "Freezing / Spatial Immobility": freeze_component,
     }
 
     score = max(0.0, min(bottom_component + top_component + freeze_component, 1.0))
@@ -86,11 +110,15 @@ def classify(behavior_data: Dict[str, Any], sensor_data: Dict[str, Any] = None) 
         frz_t = fish.get("freeze_seconds", 0.0)
         trk_t = fish.get("tracked_seconds", 1.0)
         long_bot = fish.get("longest_bottom_seconds", 0.0)
+        bot_ent = fish.get("bottom_entries", 0)
         surf_vis = fish.get("surface_visits", 0)
+        t_btw_vis = fish.get("time_between_top_visits", 0.0)
+        immob_evts = fish.get("immobility_events", 0)
         region = fish.get("region", "middle")
 
         score, label, color, reason = classify_stress(
-            top_t, bot_t, frz_t, long_bot, surf_vis, trk_t,
+            top_t, bot_t, frz_t, long_bot, bot_ent,
+            surf_vis, t_btw_vis, immob_evts, trk_t,
             current_region=region
         )
         scores.append(score)

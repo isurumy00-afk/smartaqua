@@ -1,11 +1,9 @@
 """Fish Behaviour Analysis module.
 
-Processes tracking results from Camera 1 to calculate behavioral metrics:
-- Bottom dwelling ratio & continuous bottom stay duration
-- Surface dwelling ratio & surface visit frequency
-- Freezing immobility duration (centroid displacement < 5px)
-- Erratic swimming events & region crossings
-- Shoaling score (spatial dispersion of fish group)
+Processes tracking results from Camera 1 to calculate behavioral metrics across 3 categories:
+1. Bottom Dwelling & Stay (% time in bottom zone, longest bottom stay, number of bottom entries)
+2. Top Feeding Area Activity (% time in top zone, top visits/min, time between top visits)
+3. Freezing / Spatial Immobility (immobility duration, immobility events/min)
 """
 
 import math
@@ -34,7 +32,12 @@ class BehaviorAnalyzer:
             "last_region": "middle",
             "current_bottom_seconds": 0.0,
             "longest_bottom_seconds": 0.0,
+            "bottom_entries": 0,
             "surface_visits": 0,
+            "last_top_visit_time": None,
+            "top_visit_intervals": [],
+            "immobility_events": 0,
+            "current_immobile_seconds": 0.0,
         }
 
     def analyze(self, tracks: List[Dict[str, Any]], frame_height: int = 480, dt: float = 1.0) -> Dict[str, Any]:
@@ -71,18 +74,33 @@ class BehaviorAnalyzer:
             state = self.history.setdefault(tid, self._make_fish_state())
             state["tracked_seconds"] += dt
 
-            # Compute spatial freezing immobility (centroid displacement < 5px)
+            # ── Freezing / Immobility Tracking ──
             if state["last_pos"] is not None:
                 disp = math.dist(state["last_pos"], (cx, cy))
                 if disp < 5.0:
                     state["freeze_seconds"] += dt
+                    state["current_immobile_seconds"] += dt
+                    # Increment immobility episode once threshold reached (e.g. 2.0s)
+                    if state["current_immobile_seconds"] >= 2.0 and (state["current_immobile_seconds"] - dt) < 2.0:
+                        state["immobility_events"] += 1
+                else:
+                    state["current_immobile_seconds"] = 0.0
 
-            # Region assignment
+            # ── Region Assignment & Entries ──
+            prev_region = state["last_region"]
             if cy < top_line:
                 region = "top"
                 surface_count += 1
                 state["top_seconds"] += dt
                 state["current_bottom_seconds"] = 0.0
+
+                if prev_region != "top":
+                    state["surface_visits"] += 1
+                    if state["last_top_visit_time"] is not None:
+                        interval = state["tracked_seconds"] - state["last_top_visit_time"]
+                        state["top_visit_intervals"].append(interval)
+                    state["last_top_visit_time"] = state["tracked_seconds"]
+
             elif cy > bottom_line:
                 region = "bottom"
                 bottom_count += 1
@@ -91,19 +109,23 @@ class BehaviorAnalyzer:
                 state["longest_bottom_seconds"] = max(
                     state["longest_bottom_seconds"], state["current_bottom_seconds"]
                 )
+                if prev_region != "bottom":
+                    state["bottom_entries"] += 1
             else:
                 region = "middle"
                 state["current_bottom_seconds"] = 0.0
 
-            # Crossing & surface visit counts
-            prev_region = state["last_region"]
             if region != prev_region and region != "middle" and prev_region != "middle":
                 state["crossings"] += 1
-            if prev_region != "top" and region == "top":
-                state["surface_visits"] += 1
 
             state["last_region"] = region
             state["last_pos"] = (cx, cy)
+
+            avg_top_interval = (
+                float(np.mean(state["top_visit_intervals"]))
+                if state["top_visit_intervals"]
+                else 0.0
+            )
 
             fish_details.append({
                 "fish_id": tid,
@@ -115,7 +137,10 @@ class BehaviorAnalyzer:
                 "bottom_seconds": round(state["bottom_seconds"], 1),
                 "freeze_seconds": round(state["freeze_seconds"], 1),
                 "longest_bottom_seconds": round(state["longest_bottom_seconds"], 1),
+                "bottom_entries": state["bottom_entries"],
                 "surface_visits": state["surface_visits"],
+                "time_between_top_visits": round(avg_top_interval, 1),
+                "immobility_events": state["immobility_events"],
                 "crossings": state["crossings"],
             })
 

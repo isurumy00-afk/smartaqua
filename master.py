@@ -74,7 +74,10 @@ def make_fish_state():
         "last": None, "cross": 0, "top": 0.0,
         "bottom": 0.0, "freeze": 0.0, "tracked": 0.0,
         "last_region": "middle", "current_bottom": 0.0,
-        "longest_bottom": 0.0, "surface_visits": 0
+        "longest_bottom": 0.0, "bottom_entries": 0,
+        "surface_visits": 0, "last_top_visit_time": None,
+        "top_visit_intervals": [], "immobility_events": 0,
+        "current_immobile_seconds": 0.0
     }
 
 def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior, current_fps=30.0, dt=0.033):
@@ -113,34 +116,52 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
                 disp = math.dist(s["last"], (cx, cy))
                 if disp < 5.0:
                     s["freeze"] += dt
+                    s["current_immobile_seconds"] += dt
+                    if s["current_immobile_seconds"] >= 2.0 and (s["current_immobile_seconds"] - dt) < 2.0:
+                        s["immobility_events"] += 1
+                else:
+                    s["current_immobile_seconds"] = 0.0
 
-            # Region assignment
+            # Region assignment & entries
+            prev_region = s["last_region"]
             if cy < top_line:
                 region = "top"
                 s["top"] += dt
                 s["current_bottom"] = 0.0
+                if prev_region != "top":
+                    s["surface_visits"] += 1
+                    if s["last_top_visit_time"] is not None:
+                        interval = s["tracked"] - s["last_top_visit_time"]
+                        s["top_visit_intervals"].append(interval)
+                    s["last_top_visit_time"] = s["tracked"]
             elif cy > bottom_line:
                 region = "bottom"
                 s["bottom"] += dt
                 s["current_bottom"] += dt
                 s["longest_bottom"] = max(s["longest_bottom"], s["current_bottom"])
+                if prev_region != "bottom":
+                    s["bottom_entries"] += 1
             else:
                 region = "middle"
                 s["current_bottom"] = 0.0
 
-            prev_region = s["last_region"]
             if region != prev_region and region != "middle" and prev_region != "middle":
                 s["cross"] += 1
-            if prev_region != "top" and region == "top":
-                s["surface_visits"] += 1
 
             s["last_region"] = region
             s["last"] = (cx, cy)
 
-            # Classify fish stress based on Bottom Dwelling, Top Feeding Activity, & Freezing Immobility
+            avg_top_interval = (
+                float(np.mean(s["top_visit_intervals"]))
+                if s["top_visit_intervals"]
+                else 0.0
+            )
+
+            # Classify fish stress using all 9 measurable features from table
             score, label, color, reason = classify_fish_stress(
                 s["top"], s["bottom"], s["freeze"], s["longest_bottom"],
-                s["surface_visits"], s["tracked"], current_region=region
+                s["bottom_entries"], s["surface_visits"], avg_top_interval,
+                s["immobility_events"], s["tracked"], current_region=region
             )
             fish_scores.append(score)
 
