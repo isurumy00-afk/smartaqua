@@ -105,6 +105,13 @@ class SideCamera:
         f3_y = int((h * 0.82) + math.sin(t * 0.6) * 15)
         cv2.ellipse(frame, (f3_x, f3_y), (40, 16), 0, 0, 360, (50, 180, 50), -1)
 
+        # Save synthetic bounding boxes
+        self.synthetic_boxes = [
+            [max(0, f1_x - 40), max(0, f1_y - 22), min(w, f1_x + 40), min(h, f1_y + 22)],
+            [max(0, f2_x - 32), max(0, f2_y - 18), min(w, f2_x + 32), min(h, f2_y + 18)],
+            [max(0, f3_x - 45), max(0, f3_y - 20), min(w, f3_x + 45), min(h, f3_y + 20)],
+        ]
+
         self._latest_frame = frame
         return frame
 

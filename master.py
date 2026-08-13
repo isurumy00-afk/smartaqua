@@ -7,6 +7,7 @@ Prints clear real-time progress to the terminal and saves all state to JSON.
 
 import time
 from datetime import datetime, timezone
+from typing import Dict, Any, List
 
 import cv2
 from config import DATA_DIR, TOP_REGION_PERCENT, BOTTOM_REGION_PERCENT
@@ -55,37 +56,162 @@ def print_banner():
     print("=" * 60)
 
 
-def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior, current_fps=30.0):
-    """Draw bounding boxes, region lines, countdown timer, FPS, and stress HUD on frame."""
+FISH_STATES: Dict[int, Dict[str, Any]] = {}
+
+def make_fish_state():
+    """Create tracking state dictionary for a single fish."""
+    return {
+        "last": None, "dist": 0.0, "cross": 0, "top": 0.0,
+        "bottom": 0.0, "freeze": 0.0, "tracked": 0.0,
+        "last_region": "middle", "current_bottom": 0.0,
+        "longest_bottom": 0.0, "surface_visits": 0,
+        "high_speed_duration": 0.0
+    }
+
+def classify_fish_stress(top_time, bottom_time, freeze_time, mean_speed, crossings,
+                         longest_bottom, surface_visits, total_time,
+                         current_region=None, current_speed=None,
+                         high_speed_duration=0.0):
+    """Classify individual fish stress level based on multi-component behavioral metrics."""
+    if total_time <= 0:
+        return 0.0, "Healthy", (0, 255, 0), "Normal"
+
+    bottom_ratio = bottom_time / total_time
+    top_ratio = top_time / total_time
+    bottom_score = min(bottom_ratio / 0.70, 1.0)
+    if current_region is not None and current_region != "bottom":
+        bottom_score = 0.0
+
+    speed_for_status = mean_speed if current_speed is None else current_speed
+    speed_score = min(abs(speed_for_status - 40.0) / 40.0, 1.0)
+    high_speed = high_speed_duration >= ABNORMAL_SPEED_DURATION
+
+    components = {
+        "Bottom Dwelling": 0.22 * bottom_score,
+        "Freezing": 0.22 * min(freeze_time / 20.0, 1.0),
+        "Abnormal Speed": 0.16 * speed_score,
+        "Erratic Swimming": 0.10 * min(crossings / 15.0, 1.0),
+        "Low Surface Activity": 0.10 * (1 - min(top_ratio / 0.30, 1.0)),
+        "Prolonged Bottom Stay": 0.12 * min(longest_bottom / 30.0, 1.0),
+        "Frequent Surfacing": 0.08 * min(surface_visits / 20.0, 1.0),
+    }
+
+    score = max(0.0, min(sum(components.values()), 1.0))
+    reason = max(components, key=components.get)
+
+    if high_speed:
+        return max(score, 0.60), "High Stress", (0, 0, 255), "Abnormal Speed"
+    if score < 0.30:
+        return score, "Healthy", (0, 255, 0), "Normal"
+    if score < 0.60:
+        return score, "Mild Stress", (0, 255, 255), reason
+    return score, "High Stress", (0, 0, 255), reason
+
+def classify_tank_stress(scores):
+    """Return live whole-tank stress classification from visible fish scores."""
+    if not scores:
+        return 0.0, "Healthy", (0, 255, 0)
+    score = float(np.mean(scores))
+    if score < 0.30:
+        return score, "Healthy", (0, 255, 0)
+    if score < 0.60:
+        return score, "Mild Stress", (0, 255, 255)
+    return score, "High Stress", (0, 0, 255)
+
+def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior, current_fps=30.0, dt=0.033):
+    """Draw bounding boxes, region lines, 3-line fish tags, countdown timer, FPS, and tank stress on frame."""
     vis = frame.copy()
     fh, fw = vis.shape[:2]
 
-    # ── Region boundary lines ──
     top_line = int(fh * TOP_REGION_PERCENT)
     bottom_line = int(fh * (1.0 - BOTTOM_REGION_PERCENT))
 
-    cv2.line(vis, (0, top_line), (fw, top_line), (255, 0, 255), 2)
+    # ── Region boundary lines ──
+    cv2.line(vis, (0, top_line), (fw, top_line), (255, 0, 0), 2)
     cv2.putText(vis, "TOP FEEDING REGION", (10, top_line - 8),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 255), 1)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 1)
 
-    cv2.line(vis, (0, bottom_line), (fw, bottom_line), (0, 255, 255), 2)
+    cv2.line(vis, (0, bottom_line), (fw, bottom_line), (0, 0, 255), 2)
     cv2.putText(vis, "BOTTOM DWELLING REGION", (10, bottom_line + 18),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
 
-    # ── Fish bounding boxes ──
+    fish_scores = []
+
+    # ── Draw per-fish bounding boxes, multi-line status tags, & individual stress ──
     for fish in tracks:
         bbox = fish.get("bbox")
-        fid = fish.get("fish_id", "?")
-        conf = fish.get("confidence", 0.0)
+        tid = fish.get("fish_id", 1)
         speed = fish.get("speed", 0.0)
+
         if bbox and len(bbox) == 4:
             x1, y1, x2, y2 = map(int, bbox)
-            cv2.rectangle(vis, (x1, y1), (x2, y2), (255, 255, 0), 2)
-            label = f"Fish #{fid} ({int(conf*100)}%) {speed}px/s"
-            cv2.putText(vis, label, (x1, max(y1 - 10, 20)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
 
-    # ── Countdown timer & FPS readout (top-right corner) ──
+            s = FISH_STATES.setdefault(tid, make_fish_state())
+            s["dist"] += speed * dt
+            s["tracked"] += dt
+
+            if speed < FREEZE_SPEED_THRESHOLD:
+                s["freeze"] += dt
+            if speed >= ABNORMAL_SPEED_THRESHOLD:
+                s["high_speed_duration"] += dt
+            else:
+                s["high_speed_duration"] = 0.0
+
+            # Region assignment
+            if cy < top_line:
+                region = "top"
+                s["top"] += dt
+                s["current_bottom"] = 0.0
+            elif cy > bottom_line:
+                region = "bottom"
+                s["bottom"] += dt
+                s["current_bottom"] += dt
+                s["longest_bottom"] = max(s["longest_bottom"], s["current_bottom"])
+            else:
+                region = "middle"
+                s["current_bottom"] = 0.0
+
+            prev_region = s["last_region"]
+            if region != prev_region and region != "middle" and prev_region != "middle":
+                s["cross"] += 1
+            if prev_region != "top" and region == "top":
+                s["surface_visits"] += 1
+
+            s["last_region"] = region
+            s["last"] = (cx, cy)
+
+            mean_speed = s["dist"] / max(s["tracked"], 1e-6)
+
+            # Classify fish stress
+            score, label, color, reason = classify_fish_stress(
+                s["top"], s["bottom"], s["freeze"], mean_speed, s["cross"],
+                s["longest_bottom"], s["surface_visits"], s["tracked"],
+                current_region=region, current_speed=speed,
+                high_speed_duration=s["high_speed_duration"]
+            )
+            fish_scores.append(score)
+
+            # 1. Draw colored bounding box matching stress state (Green / Yellow / Red)
+            cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
+
+            # 2. Draw 3 lines of tags above bounding box
+            tag1 = f"ID {tid} | {speed:.1f} px/s"
+            tag2 = f"{label} ({score:.2f})"
+            tag3 = f"{reason}"
+
+            cv2.putText(vis, tag1, (x1, max(y1 - 45, 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.50, color, 2)
+            cv2.putText(vis, tag2, (x1, max(y1 - 25, 40)), cv2.FONT_HERSHEY_SIMPLEX, 0.50, color, 2)
+            cv2.putText(vis, tag3, (x1, max(y1 - 5, 60)), cv2.FONT_HERSHEY_SIMPLEX, 0.50, color, 2)
+
+    # ── Whole Tank Stress Status ──
+    tank_score, tank_label, tank_color = classify_tank_stress(fish_scores)
+
+    # Top-left Tank Stress Header
+    cv2.putText(vis, f"Tank Stress: {tank_label} ({tank_score:.2f})", (10, 35),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, tank_color, 2)
+
+    # Top-right Countdown Timer & FPS readout
     mins = int(remaining_secs // 60)
     secs = int(remaining_secs % 60)
     timer_text = f"Time Left: {mins:02d}:{secs:02d}"
@@ -93,28 +219,6 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
                 cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
     cv2.putText(vis, f"FPS: {current_fps:.1f}", (fw - 250, 65),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 255), 2)
-
-    # ── Stress HUD panel (top-left, semi-transparent) ──
-    score = stress_data.get("tank_stress_score", 0.0)
-    level = stress_data.get("tank_stress_level", "Healthy")
-    fish_count = behavior.get("fish_count", 0)
-
-    stress_color_map = {
-        "Healthy": (0, 255, 0), "Mild": (0, 255, 255),
-        "Moderate": (0, 165, 255), "High": (0, 80, 255), "Critical": (0, 0, 255),
-    }
-    stress_color = stress_color_map.get(level, (255, 255, 255))
-
-    overlay = vis.copy()
-    cv2.rectangle(overlay, (5, 5), (320, 100), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.6, vis, 0.4, 0, vis)
-
-    cv2.putText(vis, f"Stress: {level} ({score:.2f})", (15, 35),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, stress_color, 2)
-    cv2.putText(vis, f"Fish Count: {fish_count}", (15, 65),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
-    cv2.putText(vis, f"Avg Speed: {behavior.get('average_speed', 0):.1f} px/s", (15, 90),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
     return vis
 
@@ -209,7 +313,7 @@ def stage_sensors_and_stress():
 
             # Draw annotated frame and display
             vis_frame = _draw_analysis_overlay(
-                frame, tracks, running_stress, remaining, behavior_metrics, current_fps
+                frame, tracks, running_stress, remaining, behavior_metrics, current_fps, dt=max(0.01, actual_dt)
             )
             cv2.imshow(WINDOW_NAME, vis_frame)
 

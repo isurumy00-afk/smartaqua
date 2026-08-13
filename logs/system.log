@@ -14,3 +14,4 @@
 2026-08-13T16:05:19+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.
 2026-08-13T16:05:20+0530 [INFO] [vision.fish_tracker] YOLOv8 ONNX fish detector loaded: fish_detector_yolov8.onnx  input=(640, 640)
 2026-08-13T16:05:46+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.
+2026-08-13T16:22:56+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.

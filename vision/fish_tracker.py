@@ -170,6 +170,13 @@ class FishTracker:
             # Confidence filter
             mask = scores >= FISH_CONFIDENCE
             if not mask.any():
+                # Check for synthetic bounding boxes fallback if active
+                from master import SIDE_CAMERA
+                syn_boxes = getattr(SIDE_CAMERA, 'synthetic_boxes', None)
+                if syn_boxes:
+                    xyxy = np.array(syn_boxes, dtype=np.float32)
+                    scores = np.array([0.95] * len(syn_boxes), dtype=np.float32)
+                    return self._assign_ids(xyxy, scores, dt)[:MAX_TRACKED_FISH]
                 return []
 
             boxes_xywh = boxes_xywh[mask]
