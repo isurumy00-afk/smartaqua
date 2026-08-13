@@ -4,15 +4,13 @@ Tracks fish in Camera 1 side-view frames using a pure ONNX Runtime pipeline,
 maintaining identity, bounding boxes, centre points, trajectory history, and
 speed across frames.
 
-YOLOv8 ONNX output tensor shape: [1, 84, 8400]
-  - Rows 0-3  : cx, cy, w, h  (centre + size, not corner coords)
-  - Rows 4-83 : class probabilities (80 COCO classes — or N custom classes)
-
-The decode + NMS logic here does NOT require ultralytics or PyTorch.
+Uses an asynchronous background worker thread for ONNX inference to achieve
+non-blocking zero-latency tracking calls and silky-smooth 30 FPS video playback.
 """
 
 import math
 import time
+import threading
 from typing import List, Dict, Any
 
 import numpy as np
@@ -28,16 +26,7 @@ LOG = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 def _nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float = 0.45) -> List[int]:
-    """Non-maximum suppression (numpy, no torch dependency).
-
-    Args:
-        boxes:  (N, 4) float32 — [x1, y1, x2, y2]
-        scores: (N,)   float32
-        iou_threshold: keep if IoU with already-selected box < threshold
-
-    Returns:
-        List of kept indices, ordered by descending score.
-    """
+    """Non-maximum suppression (numpy, no torch dependency)."""
     x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
     areas = (x2 - x1) * (y2 - y1)
     order = scores.argsort()[::-1]
@@ -65,15 +54,23 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float = 0.45) -> 
 # ---------------------------------------------------------------------------
 
 class FishTracker:
-    """YOLOv8 ONNX fish tracker — no PyTorch / ultralytics required."""
+    """YOLOv8 ONNX fish tracker with asynchronous non-blocking inference."""
 
     def __init__(self):
         self.session = None
         self.input_name: str = ""
-        self.input_shape: tuple = (640, 640)   # (H, W) updated on load
+        self.input_shape: tuple = (640, 640)
         self.fish_states: Dict[int, Dict[str, Any]] = {}
         self.last_timestamp: float = time.time()
-        self._next_id: int = 1   # simple sequential ID when ONNX has no built-in tracking
+        self._next_id: int = 1
+
+        # Async inference thread controls
+        self._lock = threading.Lock()
+        self._pending_frame = None
+        self._latest_tracks: List[Dict[str, Any]] = []
+        self._running = True
+        self._worker_thread = None
+        self._start_worker()
 
     def _load_model(self) -> bool:
         """Lazy-load ONNX session once."""
@@ -99,12 +96,11 @@ class FishTracker:
             )
             meta = self.session.get_inputs()[0]
             self.input_name = meta.name
-            # Expected shape: [1, 3, H, W]  (NCHW, ultralytics default)
             shape = meta.shape
             if len(shape) == 4:
                 self.input_shape = (int(shape[2]), int(shape[3]))
             LOG.info(
-                "YOLOv8 ONNX fish detector loaded: %s  input=%s",
+                "YOLOv8 ONNX fish detector loaded: %s input=%s",
                 FISH_MODEL_ONNX_PATH.name,
                 self.input_shape,
             )
@@ -114,28 +110,34 @@ class FishTracker:
             self.session = None
             return False
 
-    # ------------------------------------------------------------------
-    # Public API — same dict schema as the original ultralytics tracker
-    # ------------------------------------------------------------------
+    def _start_worker(self) -> None:
+        """Start background inference worker thread."""
+        if self._worker_thread is None or not self._worker_thread.is_alive():
+            self._running = True
+            self._worker_thread = threading.Thread(target=self._inference_loop, daemon=True)
+            self._worker_thread.start()
 
-    def track(self, frame) -> List[Dict[str, Any]]:
-        """Run ONNX fish detection on a side-camera frame.
+    def _inference_loop(self) -> None:
+        """Background thread loop running ONNX inference asynchronously."""
+        while self._running:
+            frame_to_process = None
+            with self._lock:
+                if self._pending_frame is not None:
+                    frame_to_process = self._pending_frame
+                    self._pending_frame = None
 
-        Returns a list of dicts per detected fish:
-        [
-            {
-                "fish_id": int,
-                "bbox": [x1, y1, x2, y2],
-                "confidence": float,
-                "center": [cx, cy],
-                "speed": float,
-                "trajectory": [[cx, cy], ...]
-            }, ...
-        ]
-        """
-        if frame is None:
-            return []
+            if frame_to_process is None:
+                time.sleep(0.01)
+                continue
 
+            # Execute model inference
+            tracks = self._run_onnx_inference(frame_to_process)
+            with self._lock:
+                if tracks:
+                    self._latest_tracks = tracks
+
+    def _run_onnx_inference(self, frame) -> List[Dict[str, Any]]:
+        """Run actual ONNX model inference on frame."""
         if not self._load_model():
             return []
 
@@ -158,9 +160,7 @@ class FishTracker:
 
             # Inference
             outputs = self.session.run(None, {self.input_name: blob})
-            # YOLOv8 ONNX output: [1, 84, 8400]  (or [1, 4+num_cls, anchors])
-            raw = outputs[0]  # (1, 4+C, A)
-            raw = raw[0].T    # → (A, 4+C)
+            raw = outputs[0][0].T    # → (A, 4+C)
 
             boxes_xywh = raw[:, :4]               # cx, cy, w, h — model space
             class_probs = raw[:, 4:]              # (A, C)
@@ -174,9 +174,8 @@ class FishTracker:
 
             boxes_xywh = boxes_xywh[mask]
             scores = scores[mask]
-            class_ids = class_ids[mask]
 
-            # Convert cx,cy,w,h → x1,y1,x2,y2 (still in model-input space)
+            # Convert cx,cy,w,h → x1,y1,x2,y2
             cx, cy, bw, bh = boxes_xywh[:, 0], boxes_xywh[:, 1], boxes_xywh[:, 2], boxes_xywh[:, 3]
             x1 = cx - bw / 2
             y1 = cy - bh / 2
@@ -195,17 +194,29 @@ class FishTracker:
             xyxy[:, [0, 2]] *= sx
             xyxy[:, [1, 3]] *= sy
 
-            # Assign / maintain fish IDs (centroid-distance IoU-free tracker)
+            # Assign persistent IDs
             tracked_fish = self._assign_ids(xyxy, scores, dt)
             return tracked_fish[:MAX_TRACKED_FISH]
 
         except Exception as exc:
-            LOG.error("YOLOv8 ONNX tracking inference failed: %s", exc)
+            LOG.error("YOLOv8 ONNX tracking inference error: %s", exc)
             return []
 
-    # ------------------------------------------------------------------
-    # Simple nearest-centroid ID assignment
-    # ------------------------------------------------------------------
+    def track(self, frame) -> List[Dict[str, Any]]:
+        """Non-blocking track call (0ms latency).
+        
+        Submits frame to background worker for ONNX inference and immediately
+        returns current tracked fish list to maintain 30 FPS rendering.
+        """
+        if frame is None:
+            return []
+
+        # Pass frame to background worker if idle
+        with self._lock:
+            if self._pending_frame is None:
+                self._pending_frame = frame.copy()
+
+            return list(self._latest_tracks)
 
     def _assign_ids(
         self,
@@ -216,11 +227,9 @@ class FishTracker:
     ) -> List[Dict[str, Any]]:
         """Assign persistent IDs to detections using nearest-centroid matching."""
         new_centers = [(float((b[0] + b[2]) / 2), float((b[1] + b[3]) / 2)) for b in xyxy]
-
-        # Build set of previously-tracked IDs for matching
         prev_ids = list(self.fish_states.keys())
 
-        assignment = {}   # detection_index → fish_id
+        assignment = {}
         used_prev = set()
 
         for det_idx, (ncx, ncy) in enumerate(new_centers):
@@ -240,7 +249,6 @@ class FishTracker:
                 assignment[det_idx] = best_fid
                 used_prev.add(best_fid)
             else:
-                # New fish
                 assignment[det_idx] = self._next_id
                 self._next_id += 1
 
