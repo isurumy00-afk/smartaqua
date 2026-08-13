@@ -3,10 +3,12 @@
 Processes tracking results from Camera 1 to calculate behavioral metrics:
 - Bottom dwelling ratio & continuous bottom stay duration
 - Surface dwelling ratio & surface visit frequency
+- Freezing immobility duration (centroid displacement < 5px)
 - Erratic swimming events & region crossings
 - Shoaling score (spatial dispersion of fish group)
 """
 
+import math
 from typing import List, Dict, Any
 import numpy as np
 from config import (
@@ -27,6 +29,7 @@ class BehaviorAnalyzer:
             "crossings": 0,
             "top_seconds": 0.0,
             "bottom_seconds": 0.0,
+            "freeze_seconds": 0.0,
             "tracked_seconds": 0.0,
             "last_region": "middle",
             "current_bottom_seconds": 0.0,
@@ -47,6 +50,7 @@ class BehaviorAnalyzer:
                 "fish_count": 0,
                 "bottom_ratio": 0.0,
                 "surface_ratio": 0.0,
+                "freeze_seconds": 0.0,
                 "erratic_events": 0,
                 "shoaling_score": 1.0,
                 "continuous_bottom_duration": 0.0,
@@ -66,6 +70,12 @@ class BehaviorAnalyzer:
 
             state = self.history.setdefault(tid, self._make_fish_state())
             state["tracked_seconds"] += dt
+
+            # Compute spatial freezing immobility (centroid displacement < 5px)
+            if state["last_pos"] is not None:
+                disp = math.dist(state["last_pos"], (cx, cy))
+                if disp < 5.0:
+                    state["freeze_seconds"] += dt
 
             # Region assignment
             if cy < top_line:
@@ -101,6 +111,9 @@ class BehaviorAnalyzer:
                 "confidence": track.get("confidence", 0.0),
                 "region": region,
                 "tracked_seconds": round(state["tracked_seconds"], 1),
+                "top_seconds": round(state["top_seconds"], 1),
+                "bottom_seconds": round(state["bottom_seconds"], 1),
+                "freeze_seconds": round(state["freeze_seconds"], 1),
                 "longest_bottom_seconds": round(state["longest_bottom_seconds"], 1),
                 "surface_visits": state["surface_visits"],
                 "crossings": state["crossings"],
@@ -117,6 +130,7 @@ class BehaviorAnalyzer:
         else:
             shoaling_score = 1.0
 
+        avg_freeze = float(np.mean([f["freeze_seconds"] for f in fish_details])) if fish_details else 0.0
         avg_longest_bottom = float(np.max([f["longest_bottom_seconds"] for f in fish_details])) if fish_details else 0.0
         total_crossings = int(np.sum([f["crossings"] for f in fish_details])) if fish_details else 0
 
@@ -124,6 +138,7 @@ class BehaviorAnalyzer:
             "fish_count": count,
             "bottom_ratio": round(bottom_count / count, 2),
             "surface_ratio": round(surface_count / count, 2),
+            "freeze_seconds": round(avg_freeze, 1),
             "erratic_events": total_crossings,
             "shoaling_score": shoaling_score,
             "continuous_bottom_duration": round(avg_longest_bottom, 1),

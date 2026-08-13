@@ -71,7 +71,7 @@ def make_fish_state():
     """Create tracking state dictionary for a single fish."""
     return {
         "last": None, "cross": 0, "top": 0.0,
-        "bottom": 0.0, "tracked": 0.0,
+        "bottom": 0.0, "freeze": 0.0, "tracked": 0.0,
         "last_region": "middle", "current_bottom": 0.0,
         "longest_bottom": 0.0, "surface_visits": 0
     }
@@ -107,6 +107,12 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
             s = FISH_STATES.setdefault(tid, make_fish_state())
             s["tracked"] += dt
 
+            # Compute spatial freezing immobility (centroid displacement < 5px)
+            if s["last"] is not None:
+                disp = math.dist(s["last"], (cx, cy))
+                if disp < 5.0:
+                    s["freeze"] += dt
+
             # Region assignment
             if cy < top_line:
                 region = "top"
@@ -130,11 +136,10 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
             s["last_region"] = region
             s["last"] = (cx, cy)
 
-            # Classify fish stress
+            # Classify fish stress based on Bottom Dwelling, Top Feeding Activity, & Freezing Immobility
             score, label, color, reason = classify_fish_stress(
-                s["top"], s["bottom"], s["cross"],
-                s["longest_bottom"], s["surface_visits"], s["tracked"],
-                current_region=region
+                s["top"], s["bottom"], s["freeze"], s["longest_bottom"],
+                s["surface_visits"], s["tracked"], current_region=region
             )
             fish_scores.append(score)
 
