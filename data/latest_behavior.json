@@ -2,67 +2,66 @@
   "fish_count": 3,
   "bottom_ratio": 0.33,
   "surface_ratio": 0.0,
-  "average_speed": 26.32,
-  "freeze_seconds": 1.0,
+  "freeze_seconds": 0.0,
   "erratic_events": 0,
-  "shoaling_score": 0.8,
-  "continuous_bottom_duration": 4.0,
-  "surface_visit_frequency": 3.3,
+  "shoaling_score": 0.82,
+  "continuous_bottom_duration": 2.0,
+  "surface_visit_frequency": 0.0,
   "fish_details": [
     {
-      "fish_id": 19,
+      "fish_id": 7,
       "bbox": [
-        153.0,
-        176.0,
-        233.0,
-        220.0
+        209.0,
+        259.0,
+        289.0,
+        303.0
       ],
       "confidence": 0.95,
-      "current_speed": 30.55,
       "region": "middle",
-      "total_distance": 893.1,
-      "tracked_seconds": 18.0,
-      "freeze_seconds": 1.0,
+      "tracked_seconds": 1.0,
+      "top_seconds": 0.0,
+      "bottom_seconds": 0.0,
+      "freeze_seconds": 0.0,
       "longest_bottom_seconds": 0.0,
-      "surface_visits": 4,
+      "surface_visits": 0,
       "crossings": 0
     },
     {
-      "fish_id": 12,
+      "fish_id": 4,
       "bbox": [
-        70.0,
-        126.0,
-        134.0,
-        162.0
+        310.0,
+        163.0,
+        374.0,
+        199.0
       ],
       "confidence": 0.95,
-      "current_speed": 20.31,
       "region": "middle",
-      "total_distance": 1830.7,
-      "tracked_seconds": 38.0,
-      "freeze_seconds": 1.0,
+      "tracked_seconds": 2.0,
+      "top_seconds": 0.0,
+      "bottom_seconds": 0.0,
+      "freeze_seconds": 0.0,
       "longest_bottom_seconds": 0.0,
-      "surface_visits": 6,
+      "surface_visits": 0,
       "crossings": 0
     },
     {
-      "fish_id": 20,
+      "fish_id": 6,
       "bbox": [
-        328.0,
-        386.0,
-        418.0,
-        426.0
+        432.0,
+        380.0,
+        522.0,
+        420.0
       ],
       "confidence": 0.95,
-      "current_speed": 28.09,
       "region": "bottom",
-      "total_distance": 76.2,
-      "tracked_seconds": 4.0,
-      "freeze_seconds": 1.0,
-      "longest_bottom_seconds": 4.0,
+      "tracked_seconds": 2.0,
+      "top_seconds": 0.0,
+      "bottom_seconds": 2.0,
+      "freeze_seconds": 0.0,
+      "longest_bottom_seconds": 2.0,
       "surface_visits": 0,
       "crossings": 0
     }
   ],
-  "timestamp": "2026-08-13T11:27:27.808566+00:00"
+  "timestamp": "2026-08-13T17:30:15.349690+00:00"
 }

@@ -1,25 +1,25 @@
 {
-  "tank_stress_score": 0.184,
-  "tank_stress_level": "Healthy",
+  "tank_stress_score": 0.447,
+  "tank_stress_level": "Mild Stress",
   "per_fish_stress": [
     {
-      "fish_id": 19,
-      "stress_score": 0.165,
-      "stress_level": "Healthy",
-      "primary_reason": "Normal"
+      "fish_id": 7,
+      "stress_score": 0.35,
+      "stress_level": "Mild Stress",
+      "primary_reason": "Low Top Feeding Activity"
     },
     {
-      "fish_id": 12,
-      "stress_score": 0.214,
-      "stress_level": "Healthy",
-      "primary_reason": "Normal"
+      "fish_id": 4,
+      "stress_score": 0.35,
+      "stress_level": "Mild Stress",
+      "primary_reason": "Low Top Feeding Activity"
     },
     {
-      "fish_id": 20,
-      "stress_score": 0.175,
-      "stress_level": "Healthy",
-      "primary_reason": "Normal"
+      "fish_id": 6,
+      "stress_score": 0.642,
+      "stress_level": "High Stress",
+      "primary_reason": "Low Top Feeding Activity"
     }
   ],
-  "timestamp": "2026-08-13T11:27:27.812655+00:00"
+  "timestamp": "2026-08-13T17:30:15.363684+00:00"
 }

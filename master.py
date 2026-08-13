@@ -5,6 +5,7 @@ and cloud synchronization sequentially in a simple, clean, linear loop.
 Prints clear real-time progress to the terminal and saves all state to JSON.
 """
 
+import math
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, List
