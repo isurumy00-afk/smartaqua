@@ -15,9 +15,6 @@ from config import (
     DATA_DIR,
     TOP_REGION_PERCENT,
     BOTTOM_REGION_PERCENT,
-    FREEZE_SPEED_THRESHOLD,
-    ABNORMAL_SPEED_THRESHOLD,
-    ABNORMAL_SPEED_DURATION,
 )
 from health.watchdog import Watchdog
 from storage.json_store import load_json, save_json
@@ -73,11 +70,10 @@ FISH_STATES: Dict[int, Dict[str, Any]] = {}
 def make_fish_state():
     """Create tracking state dictionary for a single fish."""
     return {
-        "last": None, "dist": 0.0, "cross": 0, "top": 0.0,
-        "bottom": 0.0, "freeze": 0.0, "tracked": 0.0,
+        "last": None, "cross": 0, "top": 0.0,
+        "bottom": 0.0, "tracked": 0.0,
         "last_region": "middle", "current_bottom": 0.0,
-        "longest_bottom": 0.0, "surface_visits": 0,
-        "high_speed_duration": 0.0
+        "longest_bottom": 0.0, "surface_visits": 0
     }
 
 def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior, current_fps=30.0, dt=0.033):
@@ -103,22 +99,13 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
     for fish in tracks:
         bbox = fish.get("bbox")
         tid = fish.get("fish_id", 1)
-        speed = fish.get("speed", 0.0)
 
         if bbox and len(bbox) == 4:
             x1, y1, x2, y2 = map(int, bbox)
             cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
 
             s = FISH_STATES.setdefault(tid, make_fish_state())
-            s["dist"] += speed * dt
             s["tracked"] += dt
-
-            if speed < FREEZE_SPEED_THRESHOLD:
-                s["freeze"] += dt
-            if speed >= ABNORMAL_SPEED_THRESHOLD:
-                s["high_speed_duration"] += dt
-            else:
-                s["high_speed_duration"] = 0.0
 
             # Region assignment
             if cy < top_line:
@@ -143,24 +130,21 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
             s["last_region"] = region
             s["last"] = (cx, cy)
 
-            mean_speed = s["dist"] / max(s["tracked"], 1e-6)
-
             # Classify fish stress
             score, label, color, reason = classify_fish_stress(
-                s["top"], s["bottom"], s["freeze"], mean_speed, s["cross"],
+                s["top"], s["bottom"], s["cross"],
                 s["longest_bottom"], s["surface_visits"], s["tracked"],
-                current_region=region, current_speed=speed,
-                high_speed_duration=s["high_speed_duration"]
+                current_region=region
             )
             fish_scores.append(score)
 
             # 1. Draw colored bounding box matching stress state (Green / Yellow / Red)
             cv2.rectangle(vis, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
 
-            # 2. Draw 3 lines of tags above bounding box matching exact user offsets
-            for text, y in ((f"ID {tid} | {speed:.1f} px/s", y1 - 65),
-                            (f"{label} ({score:.2f})", y1 - 45),
-                            (reason, y1 - 25)):
+            # 2. Draw 3 lines of tags above bounding box
+            for text, y in ((f"ID {tid}", y1 - 45),
+                            (f"{label} ({score:.2f})", y1 - 25),
+                            (reason, y1 - 5)):
                 cv2.putText(vis, text, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX,
                             0.50, color, 2)
 
@@ -232,7 +216,7 @@ def stage_sensors_and_stress():
     start_time = time.time()
     last_stress_update = 0.0
     running_stress = {"tank_stress_score": 0.0, "tank_stress_level": "Healthy"}
-    behavior_metrics = {"fish_count": 0, "average_speed": 0.0}
+    behavior_metrics = {"fish_count": 0}
     frame_count = 0
     current_fps = 30.0
     last_frame_time = time.time()

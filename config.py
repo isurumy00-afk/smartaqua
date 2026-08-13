@@ -53,10 +53,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "max_tracked_fish": 4,
         "top_region_percent": 0.30,
         "bottom_region_percent": 0.25,
-        "freeze_speed_threshold": 5.0,
-        "abnormal_speed_threshold": 100.0,
-        "abnormal_speed_duration": 3.0,
-        "detection_interval": 5,
     },
     "servo": {
         "pin": 18,
@@ -147,11 +143,6 @@ FISH_CONFIDENCE: float = 0.20
 MAX_TRACKED_FISH: int = 4
 TOP_REGION_PERCENT: float = 0.30
 BOTTOM_REGION_PERCENT: float = 0.25
-FREEZE_SPEED_THRESHOLD: float = 5.0
-ABNORMAL_SPEED_THRESHOLD: float = 100.0
-ABNORMAL_SPEED_DURATION: float = 3.0
-DETECTION_INTERVAL: int = 3
-
 TASK_INTERVALS: Dict[str, int] = {}
 SENSOR_CONFIG: Dict[str, Any] = {}
 
@@ -169,8 +160,6 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
     global SIDE_CAMERA_INDEX, TOP_CAMERA_INDEX
     global FISH_CONFIDENCE, MAX_TRACKED_FISH
     global TOP_REGION_PERCENT, BOTTOM_REGION_PERCENT
-    global FREEZE_SPEED_THRESHOLD, ABNORMAL_SPEED_THRESHOLD, ABNORMAL_SPEED_DURATION
-    global DETECTION_INTERVAL
     global TASK_INTERVALS, SENSOR_CONFIG
     global DASHBOARD_HOST, DASHBOARD_PORT, DASHBOARD_ENABLED
     global FIREBASE_DATABASE_URL, SERVO
@@ -184,10 +173,6 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
     MAX_TRACKED_FISH = int(vis.get("max_tracked_fish", 4))
     TOP_REGION_PERCENT = float(vis.get("top_region_percent", 0.30))
     BOTTOM_REGION_PERCENT = float(vis.get("bottom_region_percent", 0.25))
-    FREEZE_SPEED_THRESHOLD = float(vis.get("freeze_speed_threshold", 5.0))
-    ABNORMAL_SPEED_THRESHOLD = float(vis.get("abnormal_speed_threshold", 100.0))
-    ABNORMAL_SPEED_DURATION = float(vis.get("abnormal_speed_duration", 3.0))
-    DETECTION_INTERVAL = int(vis.get("detection_interval", 5))
 
     TASK_INTERVALS.clear()
     TASK_INTERVALS.update(cfg.get("task_intervals", {}))

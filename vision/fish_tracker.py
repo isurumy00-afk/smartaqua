@@ -1,20 +1,17 @@
 """ONNX Runtime YOLOv8 Fish Tracker module.
 
-Tracks fish in Camera 1 side-view frames using a pure ONNX Runtime pipeline.
-Optimized for high single-threaded FPS via:
-  1. Inter-frame velocity extrapolation on intermediate frames (0.1ms latency).
-  2. Multi-core intra-op ONNX Runtime CPU execution.
-  3. Pre-allocated numpy input tensor memory buffers.
+Tracks fish in Camera 1 side-view frames using a pure ONNX Runtime pipeline,
+maintaining identity, bounding boxes, centre points, trajectory history, and
+speed across frames synchronously on the main thread.
 """
 
-import os
 import math
 import time
 from typing import List, Dict, Any
 
 import numpy as np
 
-from config import FISH_CONFIDENCE, FISH_MODEL_ONNX_PATH, MAX_TRACKED_FISH, DETECTION_INTERVAL
+from config import FISH_CONFIDENCE, FISH_MODEL_ONNX_PATH, MAX_TRACKED_FISH
 from utils.logger import get_logger
 
 LOG = get_logger(__name__)
@@ -45,7 +42,7 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float = 0.45) -> 
 
 
 class FishTracker:
-    """YOLOv8 ONNX fish tracker optimized for high single-threaded FPS."""
+    """YOLOv8 ONNX fish tracker running synchronously on the main thread."""
 
     def __init__(self):
         self.session = None
@@ -55,12 +52,8 @@ class FishTracker:
         self.last_timestamp: float = time.time()
         self._next_id: int = 1
 
-        # Frame cadence & extrapolation state
-        self._frame_count: int = 0
-        self._last_tracks: List[Dict[str, Any]] = []
-
     def _load_model(self) -> bool:
-        """Lazy-load ONNX session once with full CPU physical core utilization."""
+        """Lazy-load ONNX session once."""
         if self.session is not None:
             return True
 
@@ -72,8 +65,7 @@ class FishTracker:
             import onnxruntime as ort
 
             opts = ort.SessionOptions()
-            cpu_cores = os.cpu_count() or 4
-            opts.intra_op_num_threads = cpu_cores
+            opts.intra_op_num_threads = 4
             opts.inter_op_num_threads = 1
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
@@ -88,8 +80,7 @@ class FishTracker:
             if len(shape) == 4:
                 self.input_shape = (int(shape[2]), int(shape[3]))
             LOG.info(
-                "YOLOv8 ONNX fish detector loaded (%d CPU cores): %s input=%s",
-                cpu_cores,
+                "YOLOv8 ONNX fish detector loaded: %s input=%s",
                 FISH_MODEL_ONNX_PATH.name,
                 self.input_shape,
             )
@@ -100,73 +91,16 @@ class FishTracker:
             return False
 
     def track(self, frame) -> List[Dict[str, Any]]:
-        """Run ONNX fish detection & tracking synchronously on main thread.
-        
-        Uses detection cadence (DETECTION_INTERVAL) to extrapolate motion on
-        intermediate frames for 20-30 FPS single-threaded throughput.
-        """
+        """Run ONNX fish detection & tracking synchronously on the main thread."""
         if frame is None:
             return []
 
-        self._frame_count += 1
+        if not self._load_model():
+            return []
+
         now = time.time()
         dt = max(now - self.last_timestamp, 0.033)
         self.last_timestamp = now
-
-        # Run full ONNX detector inference on cadence frames or if no tracks exist
-        is_cadence_frame = (self._frame_count % max(1, DETECTION_INTERVAL) == 0) or not self._last_tracks
-
-        if is_cadence_frame:
-            self._last_tracks = self._run_onnx_inference(frame, dt)
-            return self._last_tracks
-        else:
-            # Intermediate frame: extrapolate fish positions instantly (0.1ms) using velocity
-            return self._extrapolate_tracks(dt)
-
-    def _extrapolate_tracks(self, dt: float) -> List[Dict[str, Any]]:
-        """Extrapolate fish bounding boxes and centroids on intermediate non-cadence frames."""
-        updated = []
-        for fish in self._last_tracks:
-            fid = fish["fish_id"]
-            bbox = fish["bbox"]
-            vx, vy = fish.get("velocity", (0.0, 0.0))
-
-            # Extrapolate centroid position
-            x1, y1, x2, y2 = bbox
-            dx = vx * dt
-            dy = vy * dt
-
-            nx1 = round(float(x1 + dx), 2)
-            ny1 = round(float(y1 + dy), 2)
-            nx2 = round(float(x2 + dx), 2)
-            ny2 = round(float(y2 + dy), 2)
-            ncx = round(float((nx1 + nx2) / 2.0), 2)
-            ncy = round(float((ny1 + ny2) / 2.0), 2)
-
-            state = self.fish_states.get(fid)
-            if state:
-                state["last_center"] = (ncx, ncy)
-                state["trajectory"].append([ncx, ncy])
-                if len(state["trajectory"]) > 30:
-                    state["trajectory"].pop(0)
-
-            updated.append({
-                "fish_id": fid,
-                "bbox": [nx1, ny1, nx2, ny2],
-                "confidence": fish["confidence"],
-                "center": [ncx, ncy],
-                "speed": fish["speed"],
-                "velocity": (vx, vy),
-                "trajectory": fish["trajectory"],
-            })
-
-        self._last_tracks = updated
-        return updated
-
-    def _run_onnx_inference(self, frame, dt: float) -> List[Dict[str, Any]]:
-        """Run actual ONNX neural model inference on frame."""
-        if not self._load_model():
-            return []
 
         try:
             import cv2
@@ -181,7 +115,7 @@ class FishTracker:
                 rgb.transpose(2, 0, 1)[np.newaxis, :].astype(np.float32) / 255.0
             )
 
-            # Synchronous ONNX Inference
+            # Synchronous ONNX Inference on main thread
             outputs = self.session.run(None, {self.input_name: blob})
             raw = outputs[0][0].T    # → (A, 4+C)
 
@@ -238,7 +172,7 @@ class FishTracker:
         dt: float,
         max_dist: float = 80.0,
     ) -> List[Dict[str, Any]]:
-        """Assign persistent IDs to detections using nearest-centroid matching and compute velocities."""
+        """Assign persistent IDs to detections using nearest-centroid matching."""
         new_centers = [(float((b[0] + b[2]) / 2), float((b[1] + b[3]) / 2)) for b in xyxy]
         prev_ids = list(self.fish_states.keys())
 
@@ -273,23 +207,9 @@ class FishTracker:
             state = self.fish_states.setdefault(fid, {
                 "trajectory": [],
                 "last_center": None,
-                "speed": 0.0,
-                "velocity": (0.0, 0.0),
             })
 
-            if state["last_center"] is not None:
-                pcx, pcy = state["last_center"]
-                dist = math.dist((pcx, pcy), (cx, cy))
-                speed = round(float(dist / dt), 2)
-                vx = (cx - pcx) / dt
-                vy = (cy - pcy) / dt
-            else:
-                speed = 0.0
-                vx, vy = 0.0, 0.0
-
             state["last_center"] = (cx, cy)
-            state["speed"] = speed
-            state["velocity"] = (vx, vy)
             state["trajectory"].append([cx, cy])
             if len(state["trajectory"]) > 30:
                 state["trajectory"].pop(0)
@@ -299,8 +219,6 @@ class FishTracker:
                 "bbox": [round(float(v), 2) for v in bbox],
                 "confidence": round(float(scores[det_idx]), 3),
                 "center": [round(cx, 2), round(cy, 2)],
-                "speed": speed,
-                "velocity": (vx, vy),
                 "trajectory": list(state["trajectory"]),
             })
 
