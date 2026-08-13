@@ -10,7 +10,15 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List
 
 import cv2
-from config import DATA_DIR, TOP_REGION_PERCENT, BOTTOM_REGION_PERCENT
+import numpy as np
+from config import (
+    DATA_DIR,
+    TOP_REGION_PERCENT,
+    BOTTOM_REGION_PERCENT,
+    FREEZE_SPEED_THRESHOLD,
+    ABNORMAL_SPEED_THRESHOLD,
+    ABNORMAL_SPEED_DURATION,
+)
 from health.watchdog import Watchdog
 from storage.json_store import load_json, save_json
 from utils.logger import get_logger
@@ -276,6 +284,7 @@ def stage_sensors_and_stress():
     frame_count = 0
     current_fps = 30.0
     last_frame_time = time.time()
+    actual_dt = 0.033
     tracks = []
 
     print(f"  |-- Starting 3-minute visual stress observation at ~30 FPS (press 'q' to skip)...")

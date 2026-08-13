@@ -1,13 +1,68 @@
 {
-  "fish_count": 0,
-  "bottom_ratio": 0.0,
-  "surface_ratio": 0.0,
+  "fish_count": 3,
+  "bottom_ratio": 0.33,
+  "surface_ratio": 0.33,
   "average_speed": 0.0,
-  "freeze_seconds": 0.0,
+  "freeze_seconds": 1.0,
   "erratic_events": 0,
-  "shoaling_score": 1.0,
-  "continuous_bottom_duration": 0.0,
-  "surface_visit_frequency": 0.0,
-  "fish_details": [],
-  "timestamp": "2026-08-13T10:21:39.133493+00:00"
+  "shoaling_score": 0.71,
+  "continuous_bottom_duration": 1.0,
+  "surface_visit_frequency": 0.3,
+  "fish_details": [
+    {
+      "fish_id": 1,
+      "bbox": [
+        454.0,
+        138.0,
+        534.0,
+        182.0
+      ],
+      "confidence": 0.95,
+      "current_speed": 0.0,
+      "region": "middle",
+      "total_distance": 0.0,
+      "tracked_seconds": 1.0,
+      "freeze_seconds": 1.0,
+      "longest_bottom_seconds": 0.0,
+      "surface_visits": 0,
+      "crossings": 0
+    },
+    {
+      "fish_id": 2,
+      "bbox": [
+        76.0,
+        115.0,
+        140.0,
+        151.0
+      ],
+      "confidence": 0.95,
+      "current_speed": 0.0,
+      "region": "top",
+      "total_distance": 0.0,
+      "tracked_seconds": 1.0,
+      "freeze_seconds": 1.0,
+      "longest_bottom_seconds": 0.0,
+      "surface_visits": 1,
+      "crossings": 0
+    },
+    {
+      "fish_id": 3,
+      "bbox": [
+        413.0,
+        388.0,
+        503.0,
+        428.0
+      ],
+      "confidence": 0.95,
+      "current_speed": 0.0,
+      "region": "bottom",
+      "total_distance": 0.0,
+      "tracked_seconds": 1.0,
+      "freeze_seconds": 1.0,
+      "longest_bottom_seconds": 1.0,
+      "surface_visits": 0,
+      "crossings": 0
+    }
+  ],
+  "timestamp": "2026-08-13T11:04:15.588755+00:00"
 }

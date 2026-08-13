@@ -1,6 +1,25 @@
 {
-  "tank_stress_score": 0.0,
+  "tank_stress_score": 0.215,
   "tank_stress_level": "Healthy",
-  "per_fish_stress": [],
-  "timestamp": "2026-08-13T10:21:39.140025+00:00"
+  "per_fish_stress": [
+    {
+      "fish_id": 1,
+      "stress_score": 0.213,
+      "stress_level": "Healthy",
+      "primary_reason": "Abnormal Swimming Speed"
+    },
+    {
+      "fish_id": 2,
+      "stress_score": 0.213,
+      "stress_level": "Healthy",
+      "primary_reason": "Abnormal Swimming Speed"
+    },
+    {
+      "fish_id": 3,
+      "stress_score": 0.221,
+      "stress_level": "Healthy",
+      "primary_reason": "Abnormal Swimming Speed"
+    }
+  ],
+  "timestamp": "2026-08-13T11:04:15.595280+00:00"
 }
