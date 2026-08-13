@@ -8,7 +8,8 @@ Prints clear real-time progress to the terminal and saves all state to JSON.
 import time
 from datetime import datetime, timezone
 
-from config import DATA_DIR
+import cv2
+from config import DATA_DIR, TOP_REGION_PERCENT, BOTTOM_REGION_PERCENT
 from health.watchdog import Watchdog
 from storage.json_store import load_json, save_json
 from utils.logger import get_logger
@@ -54,11 +55,73 @@ def print_banner():
     print("=" * 60)
 
 
+def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior):
+    """Draw bounding boxes, region lines, countdown timer, and stress HUD on frame."""
+    vis = frame.copy()
+    fh, fw = vis.shape[:2]
+
+    # ── Region boundary lines ──
+    top_line = int(fh * TOP_REGION_PERCENT)
+    bottom_line = int(fh * (1.0 - BOTTOM_REGION_PERCENT))
+
+    cv2.line(vis, (0, top_line), (fw, top_line), (255, 0, 255), 2)
+    cv2.putText(vis, "TOP FEEDING REGION", (10, top_line - 8),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 255), 1)
+
+    cv2.line(vis, (0, bottom_line), (fw, bottom_line), (0, 255, 255), 2)
+    cv2.putText(vis, "BOTTOM DWELLING REGION", (10, bottom_line + 18),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+
+    # ── Fish bounding boxes ──
+    for fish in tracks:
+        bbox = fish.get("bbox")
+        fid = fish.get("fish_id", "?")
+        conf = fish.get("confidence", 0.0)
+        speed = fish.get("speed", 0.0)
+        if bbox and len(bbox) == 4:
+            x1, y1, x2, y2 = map(int, bbox)
+            cv2.rectangle(vis, (x1, y1), (x2, y2), (255, 255, 0), 2)
+            label = f"Fish #{fid} ({int(conf*100)}%) {speed}px/s"
+            cv2.putText(vis, label, (x1, max(y1 - 10, 20)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+    # ── Countdown timer (top-right corner) ──
+    mins = int(remaining_secs // 60)
+    secs = int(remaining_secs % 60)
+    timer_text = f"Time Left: {mins:02d}:{secs:02d}"
+    cv2.putText(vis, timer_text, (fw - 250, 35),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+    # ── Stress HUD panel (top-left, semi-transparent) ──
+    score = stress_data.get("tank_stress_score", 0.0)
+    level = stress_data.get("tank_stress_level", "Healthy")
+    fish_count = behavior.get("fish_count", 0)
+
+    stress_color_map = {
+        "Healthy": (0, 255, 0), "Mild": (0, 255, 255),
+        "Moderate": (0, 165, 255), "High": (0, 80, 255), "Critical": (0, 0, 255),
+    }
+    stress_color = stress_color_map.get(level, (255, 255, 255))
+
+    overlay = vis.copy()
+    cv2.rectangle(overlay, (5, 5), (320, 100), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.6, vis, 0.4, 0, vis)
+
+    cv2.putText(vis, f"Stress: {level} ({score:.2f})", (15, 35),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, stress_color, 2)
+    cv2.putText(vis, f"Fish Count: {fish_count}", (15, 65),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
+    cv2.putText(vis, f"Avg Speed: {behavior.get('average_speed', 0):.1f} px/s", (15, 90),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+    return vis
+
+
 def stage_sensors_and_stress():
-    """Stage 1: Read sensors (Arduino + Modbus), track fish & classify stress."""
-    print("\n[1/5] Reading Sensors & Analyzing Fish Behavior/Stress...")
-    
-    # 1. Read Sensors
+    """Stage 1: Read sensors, then run a 3-minute visual stress observation with live video."""
+    print("\n[1/5] Reading Sensors & Starting 3-Minute Visual Stress Analysis...")
+
+    # ── 1. Read Sensors (once at the start) ──
     try:
         from sensors.arduino_reader import read as read_arduino
         arduino_readings = read_arduino()
@@ -87,64 +150,77 @@ def stage_sensors_and_stress():
     }
     save_json(DATA_DIR / "latest_sensor.json", sensor_readings)
 
-    # 2. Side Camera Capture & Tracking
-    frame = SIDE_CAMERA.read()
-    tracks = FISH_TRACKER.track(frame)
-
-    # Render OpenCV window with live feed, region boundary lines, and bounding boxes
-    if frame is not None:
-        try:
-            import cv2
-            from config import TOP_REGION_PERCENT, BOTTOM_REGION_PERCENT
-            vis_frame = frame.copy()
-            fh, fw = vis_frame.shape[:2]
-
-            top_line = int(fh * TOP_REGION_PERCENT)
-            bottom_line = int(fh * (1.0 - BOTTOM_REGION_PERCENT))
-
-            # Draw Top Feeding Region boundary line (Magenta)
-            cv2.line(vis_frame, (0, top_line), (fw, top_line), (255, 0, 255), 2)
-            cv2.putText(vis_frame, "TOP FEEDING REGION", (10, top_line - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 255), 1)
-
-            # Draw Bottom Dwelling Region boundary line (Yellow)
-            cv2.line(vis_frame, (0, bottom_line), (fw, bottom_line), (0, 255, 255), 2)
-            cv2.putText(vis_frame, "BOTTOM DWELLING REGION", (10, bottom_line + 18),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
-
-            # Draw Bounding Boxes & Tags
-            for fish in tracks:
-                bbox = fish.get("bbox")
-                fid = fish.get("fish_id", "?")
-                conf = fish.get("confidence", 0.0)
-                speed = fish.get("speed", 0.0)
-                if bbox and len(bbox) == 4:
-                    x1, y1, x2, y2 = map(int, bbox)
-                    # Draw cyan bounding box
-                    cv2.rectangle(vis_frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                    label = f"Fish #{fid} ({int(conf*100)}%) {speed}px/s"
-                    cv2.putText(vis_frame, label, (x1, max(y1 - 10, 20)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-
-            cv2.imshow("AquaMonitor - Step 1: Live Fish Tracking", vis_frame)
-            cv2.waitKey(1)
-        except Exception as exc:
-            LOG.debug("OpenCV GUI display skipped (headless environment): %s", exc)
-
-    # 3. Behavior & Stress
-    frame_h = frame.shape[0] if frame is not None else 480
-    behavior_metrics = BEHAVIOR_ANALYZER.analyze(tracks, frame_height=frame_h)
-    save_json(DATA_DIR / "latest_behavior.json", behavior_metrics)
-
-    stress_results = classify_stress(behavior_metrics, sensor_readings)
-    save_json(DATA_DIR / "latest_stress.json", stress_results)
-
     temp_val = sensor_readings['temperature'].get('value', 'N/A')
     ph_val = sensor_readings['ph'].get('value', 'N/A')
     turb_val = sensor_readings['turbidity'].get('value', 'N/A')
     ion_val = sensor_readings['ionconcentration'].get('value', 'N/A')
-
     print(f"  |-- Temp: {temp_val} C | pH: {ph_val} | Turbidity: {turb_val} NTU | Ion: {ion_val} uS/cm")
+
+    # ── 2. Three-minute continuous visual stress observation ──
+    OBSERVATION_DURATION = 180   # 3 minutes
+    STRESS_UPDATE_INTERVAL = 5   # Refresh stress HUD every 5 seconds
+    WINDOW_NAME = "AquaMonitor - Step 1: Live Stress Analysis (3 min)"
+
+    start_time = time.time()
+    last_stress_update = 0.0
+    running_stress = {"tank_stress_score": 0.0, "tank_stress_level": "Healthy"}
+    behavior_metrics = {"fish_count": 0, "average_speed": 0.0}
+    frame_count = 0
+
+    print(f"  |-- Starting 3-minute visual stress observation (press 'q' to skip)...")
+
+    try:
+        while True:
+            elapsed = time.time() - start_time
+            remaining = max(0.0, OBSERVATION_DURATION - elapsed)
+
+            if elapsed >= OBSERVATION_DURATION:
+                break
+
+            # Capture frame & run YOLOv8 fish tracking
+            frame = SIDE_CAMERA.read()
+            if frame is None:
+                time.sleep(0.1)
+                continue
+
+            tracks = FISH_TRACKER.track(frame)
+            frame_h = frame.shape[0]
+            frame_count += 1
+
+            # Accumulate behavioral metrics across frames
+            behavior_metrics = BEHAVIOR_ANALYZER.analyze(tracks, frame_height=frame_h)
+
+            # Periodically recalculate stress for the live HUD
+            if elapsed - last_stress_update >= STRESS_UPDATE_INTERVAL:
+                running_stress = classify_stress(behavior_metrics, sensor_readings)
+                last_stress_update = elapsed
+
+            # Draw annotated frame and display
+            vis_frame = _draw_analysis_overlay(
+                frame, tracks, running_stress, remaining, behavior_metrics
+            )
+            cv2.imshow(WINDOW_NAME, vis_frame)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                print("  |-- Observation terminated early by user.")
+                break
+
+    except Exception as exc:
+        LOG.warning("Visual observation loop error (continuing with accumulated data): %s", exc)
+    finally:
+        try:
+            cv2.destroyWindow(WINDOW_NAME)
+        except Exception:
+            pass
+
+    # ── 3. Final stress classification on fully-accumulated behavior data ──
+    stress_results = classify_stress(behavior_metrics, sensor_readings)
+    save_json(DATA_DIR / "latest_behavior.json", behavior_metrics)
+    save_json(DATA_DIR / "latest_stress.json", stress_results)
+
+    observation_secs = round(time.time() - start_time, 1)
+    print(f"  |-- Observation complete: {observation_secs}s, {frame_count} frames analyzed")
     print(f"  |-- Tracked Fish: {behavior_metrics.get('fish_count', 0)}")
     print(f"  +-- Tank Stress Score: {stress_results.get('tank_stress_score', 0)} ({stress_results.get('tank_stress_level', 'Healthy')})")
 
