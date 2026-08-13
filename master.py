@@ -55,8 +55,8 @@ def print_banner():
     print("=" * 60)
 
 
-def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior):
-    """Draw bounding boxes, region lines, countdown timer, and stress HUD on frame."""
+def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior, current_fps=30.0):
+    """Draw bounding boxes, region lines, countdown timer, FPS, and stress HUD on frame."""
     vis = frame.copy()
     fh, fw = vis.shape[:2]
 
@@ -85,12 +85,14 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior)
             cv2.putText(vis, label, (x1, max(y1 - 10, 20)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
-    # ── Countdown timer (top-right corner) ──
+    # ── Countdown timer & FPS readout (top-right corner) ──
     mins = int(remaining_secs // 60)
     secs = int(remaining_secs % 60)
     timer_text = f"Time Left: {mins:02d}:{secs:02d}"
     cv2.putText(vis, timer_text, (fw - 250, 35),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
+    cv2.putText(vis, f"FPS: {current_fps:.1f}", (fw - 250, 65),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 255), 2)
 
     # ── Stress HUD panel (top-left, semi-transparent) ──
     score = stress_data.get("tank_stress_score", 0.0)
@@ -118,7 +120,7 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior)
 
 
 def stage_sensors_and_stress():
-    """Stage 1: Read sensors, then run a 3-minute visual stress observation with live video."""
+    """Stage 1: Read sensors, then run a 3-minute visual stress observation with live video at 30 FPS."""
     print("\n[1/5] Reading Sensors & Starting 3-Minute Visual Stress Analysis...")
 
     # ── 1. Read Sensors (once at the start) ──
@@ -156,28 +158,34 @@ def stage_sensors_and_stress():
     ion_val = sensor_readings['ionconcentration'].get('value', 'N/A')
     print(f"  |-- Temp: {temp_val} C | pH: {ph_val} | Turbidity: {turb_val} NTU | Ion: {ion_val} uS/cm")
 
-    # ── 2. Three-minute continuous visual stress observation ──
+    # ── 2. Three-minute continuous visual stress observation at 30 FPS ──
     OBSERVATION_DURATION = 180   # 3 minutes
     STRESS_UPDATE_INTERVAL = 5   # Refresh stress HUD every 5 seconds
-    WINDOW_NAME = "AquaMonitor - Step 1: Live Stress Analysis (3 min)"
+    TARGET_FPS = 30.0
+    TARGET_FRAME_TIME = 1.0 / TARGET_FPS  # 33.3 ms per frame
+    WINDOW_NAME = "AquaMonitor - Step 1: Live Stress Analysis (3 min @ 30 FPS)"
 
     start_time = time.time()
     last_stress_update = 0.0
     running_stress = {"tank_stress_score": 0.0, "tank_stress_level": "Healthy"}
     behavior_metrics = {"fish_count": 0, "average_speed": 0.0}
     frame_count = 0
+    current_fps = 30.0
+    last_frame_time = time.time()
+    tracks = []
 
-    print(f"  |-- Starting 3-minute visual stress observation (press 'q' to skip)...")
+    print(f"  |-- Starting 3-minute visual stress observation at ~30 FPS (press 'q' to skip)...")
 
     try:
         while True:
-            elapsed = time.time() - start_time
+            frame_start = time.time()
+            elapsed = frame_start - start_time
             remaining = max(0.0, OBSERVATION_DURATION - elapsed)
 
             if elapsed >= OBSERVATION_DURATION:
                 break
 
-            # Capture frame & run YOLOv8 fish tracking
+            # Capture frame
             frame = SIDE_CAMERA.read()
             if frame is None:
                 import numpy as np
@@ -185,9 +193,11 @@ def stage_sensors_and_stress():
                 cv2.putText(frame, "CAMERA FEED UNAVAILABLE", (150, 240),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-            tracks = FISH_TRACKER.track(frame)
             frame_h = frame.shape[0]
             frame_count += 1
+
+            # Run fish detection & tracking
+            tracks = FISH_TRACKER.track(frame)
 
             # Accumulate behavioral metrics across frames
             behavior_metrics = BEHAVIOR_ANALYZER.analyze(tracks, frame_height=frame_h)
@@ -199,14 +209,24 @@ def stage_sensors_and_stress():
 
             # Draw annotated frame and display
             vis_frame = _draw_analysis_overlay(
-                frame, tracks, running_stress, remaining, behavior_metrics
+                frame, tracks, running_stress, remaining, behavior_metrics, current_fps
             )
             cv2.imshow(WINDOW_NAME, vis_frame)
 
-            key = cv2.waitKey(30) & 0xFF
+            # Dynamic 30 FPS loop timing control
+            proc_duration = time.time() - frame_start
+            wait_ms = max(1, int((TARGET_FRAME_TIME - proc_duration) * 1000))
+
+            key = cv2.waitKey(wait_ms) & 0xFF
             if key == ord('q'):
                 print("  |-- Observation terminated early by user.")
                 break
+
+            # Compute smoothed moving average FPS
+            actual_dt = time.time() - last_frame_time
+            last_frame_time = time.time()
+            if actual_dt > 0:
+                current_fps = 0.9 * current_fps + 0.1 * (1.0 / actual_dt)
 
     except Exception as exc:
         LOG.warning("Visual observation loop error (continuing with accumulated data): %s", exc)

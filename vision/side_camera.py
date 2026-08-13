@@ -70,15 +70,16 @@ class SideCamera:
         """Generate synthetic aquarium video frame with animated swimming fish."""
         t = time.time() - self._start_time
         h, w = 480, 640
-        frame = np.zeros((h, w, 3), dtype=np.uint8)
 
-        # Aquatic blue gradient background (light cyan top to deep blue bottom)
-        for y in range(h):
-            ratio = y / float(h)
-            b = int(120 * (1 - ratio) + 40 * ratio)
-            g = int(80 * (1 - ratio) + 20 * ratio)
-            r = int(20 * (1 - ratio) + 5 * ratio)
-            frame[y, :] = (b, g, r)
+        # Vectorized aquatic blue gradient background (0.1ms)
+        if not hasattr(self, "_bg_template"):
+            y_ind = np.linspace(0, 1, h, dtype=np.float32)[:, None]
+            b = (120 * (1 - y_ind) + 40 * y_ind).astype(np.uint8)
+            g = (80 * (1 - y_ind) + 20 * y_ind).astype(np.uint8)
+            r = (20 * (1 - y_ind) + 5 * y_ind).astype(np.uint8)
+            self._bg_template = np.dstack([b, g, r]).repeat(w, axis=1)
+
+        frame = self._bg_template.copy()
 
         # Draw tank water line (top) and gravel line (bottom)
         cv2.line(frame, (0, 30), (w, 30), (255, 200, 100), 1)
