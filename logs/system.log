@@ -44,3 +44,213 @@
 2026-08-13T21:38:33+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.
 2026-08-13T21:38:35+0530 [INFO] [vision.fish_tracker] YOLOv8 ONNX fish detector loaded: fish_detector_yolov8.onnx input=(640, 640)
 2026-08-13T21:38:36+0530 [INFO] [vision.fish_tracker] FishTracker async multi-threaded mode set to: True
+2026-08-13T21:59:33+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.
+2026-08-13T21:59:34+0530 [INFO] [vision.fish_tracker] YOLOv8 ONNX fish detector loaded: fish_detector_yolov8.onnx input=(640, 640)
+2026-08-13T22:06:36+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.
+2026-08-13T22:06:37+0530 [INFO] [vision.fish_tracker] YOLOv8 ONNX fish detector loaded (8 CPU cores): fish_detector_yolov8.onnx input=(640, 640)
+2026-08-13T22:07:49+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.
+2026-08-13T22:07:50+0530 [INFO] [vision.fish_tracker] YOLOv8 ONNX fish detector loaded (8 CPU cores): fish_detector_yolov8.onnx input=(640, 640)
+2026-08-13T22:09:48+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.
+2026-08-13T22:09:49+0530 [INFO] [vision.fish_tracker] YOLOv8 ONNX fish detector loaded (8 CPU cores): fish_detector_yolov8.onnx input=(640, 640)
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:49+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:09:51+0530 [ERROR] [vision.fish_tracker] YOLOv8 ONNX tracking inference error: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: images for the following indices
+ index: 2 Got: 320 Expected: 640
+ index: 3 Got: 320 Expected: 640
+ Please fix either the inputs/outputs or the model.
+2026-08-13T22:10:38+0530 [WARNING] [vision.side_camera] Hardware Camera (index 0) is unavailable. Switching to live synthetic video feed.
+2026-08-13T22:10:40+0530 [INFO] [vision.fish_tracker] YOLOv8 ONNX fish detector loaded (8 CPU cores): fish_detector_yolov8.onnx input=(640, 640)

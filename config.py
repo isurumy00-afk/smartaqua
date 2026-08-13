@@ -56,7 +56,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "freeze_speed_threshold": 5.0,
         "abnormal_speed_threshold": 100.0,
         "abnormal_speed_duration": 3.0,
-        "use_async_tracker": False,
+        "detection_interval": 5,
     },
     "servo": {
         "pin": 18,
@@ -150,7 +150,7 @@ BOTTOM_REGION_PERCENT: float = 0.25
 FREEZE_SPEED_THRESHOLD: float = 5.0
 ABNORMAL_SPEED_THRESHOLD: float = 100.0
 ABNORMAL_SPEED_DURATION: float = 3.0
-USE_ASYNC_TRACKER: bool = False
+DETECTION_INTERVAL: int = 3
 
 TASK_INTERVALS: Dict[str, int] = {}
 SENSOR_CONFIG: Dict[str, Any] = {}
@@ -170,7 +170,7 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
     global FISH_CONFIDENCE, MAX_TRACKED_FISH
     global TOP_REGION_PERCENT, BOTTOM_REGION_PERCENT
     global FREEZE_SPEED_THRESHOLD, ABNORMAL_SPEED_THRESHOLD, ABNORMAL_SPEED_DURATION
-    global USE_ASYNC_TRACKER
+    global DETECTION_INTERVAL
     global TASK_INTERVALS, SENSOR_CONFIG
     global DASHBOARD_HOST, DASHBOARD_PORT, DASHBOARD_ENABLED
     global FIREBASE_DATABASE_URL, SERVO
@@ -187,7 +187,7 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
     FREEZE_SPEED_THRESHOLD = float(vis.get("freeze_speed_threshold", 5.0))
     ABNORMAL_SPEED_THRESHOLD = float(vis.get("abnormal_speed_threshold", 100.0))
     ABNORMAL_SPEED_DURATION = float(vis.get("abnormal_speed_duration", 3.0))
-    USE_ASYNC_TRACKER = bool(vis.get("use_async_tracker", False))
+    DETECTION_INTERVAL = int(vis.get("detection_interval", 5))
 
     TASK_INTERVALS.clear()
     TASK_INTERVALS.update(cfg.get("task_intervals", {}))
