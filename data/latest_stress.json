@@ -1,25 +1,25 @@
 {
-  "tank_stress_score": 0.215,
-  "tank_stress_level": "Healthy",
+  "tank_stress_score": 0.406,
+  "tank_stress_level": "Mild",
   "per_fish_stress": [
     {
-      "fish_id": 1,
-      "stress_score": 0.213,
-      "stress_level": "Healthy",
-      "primary_reason": "Abnormal Swimming Speed"
+      "fish_id": 7,
+      "stress_score": 0.3,
+      "stress_level": "Mild",
+      "primary_reason": "Freezing Motion"
     },
     {
       "fish_id": 2,
-      "stress_score": 0.213,
-      "stress_level": "Healthy",
-      "primary_reason": "Abnormal Swimming Speed"
+      "stress_score": 0.373,
+      "stress_level": "Mild",
+      "primary_reason": "Freezing Motion"
     },
     {
       "fish_id": 3,
-      "stress_score": 0.221,
-      "stress_level": "Healthy",
-      "primary_reason": "Abnormal Swimming Speed"
+      "stress_score": 0.545,
+      "stress_level": "Moderate",
+      "primary_reason": "Prolonged Bottom Dwelling"
     }
   ],
-  "timestamp": "2026-08-13T11:04:15.595280+00:00"
+  "timestamp": "2026-08-13T11:07:34.662190+00:00"
 }
