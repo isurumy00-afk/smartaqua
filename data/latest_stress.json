@@ -1,25 +1,6 @@
 {
-  "tank_stress_score": 0.406,
-  "tank_stress_level": "Mild",
-  "per_fish_stress": [
-    {
-      "fish_id": 7,
-      "stress_score": 0.3,
-      "stress_level": "Mild",
-      "primary_reason": "Freezing Motion"
-    },
-    {
-      "fish_id": 2,
-      "stress_score": 0.373,
-      "stress_level": "Mild",
-      "primary_reason": "Freezing Motion"
-    },
-    {
-      "fish_id": 3,
-      "stress_score": 0.545,
-      "stress_level": "Moderate",
-      "primary_reason": "Prolonged Bottom Dwelling"
-    }
-  ],
-  "timestamp": "2026-08-13T11:07:34.662190+00:00"
+  "tank_stress_score": 0.0,
+  "tank_stress_level": "No fish detected",
+  "per_fish_stress": [],
+  "timestamp": "2026-08-13T11:14:13.770500+00:00"
 }

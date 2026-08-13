@@ -31,7 +31,11 @@ from vision.fish_behavior import BehaviorAnalyzer
 from vision.disease_detector import DiseaseDetector
 from vision.hunger_detector import detect as detect_hunger
 from ml.water_quality_predictor import WaterQualityPredictor
-from ml.stress_classifier import classify as classify_stress
+from ml.stress_classifier import (
+    classify as classify_stress,
+    classify_stress as classify_fish_stress,
+    classify_tank_stress,
+)
 from ml.shap_explainer import explain as explain_shap
 from ml.disease_fusion import fuse as fuse_disease
 from nlp.symptom_input import process as process_symptoms
@@ -75,56 +79,6 @@ def make_fish_state():
         "longest_bottom": 0.0, "surface_visits": 0,
         "high_speed_duration": 0.0
     }
-
-def classify_fish_stress(top_time, bottom_time, freeze_time, mean_speed, crossings,
-                         longest_bottom, surface_visits, total_time,
-                         current_region=None, current_speed=None,
-                         high_speed_duration=0.0):
-    """Classify individual fish stress level based on multi-component behavioral metrics."""
-    if total_time <= 0:
-        return 0.0, "Healthy", (0, 255, 0), "Normal"
-
-    bottom_ratio = bottom_time / total_time
-    top_ratio = top_time / total_time
-    bottom_score = min(bottom_ratio / 0.70, 1.0)
-    if current_region is not None and current_region != "bottom":
-        bottom_score = 0.0
-
-    speed_for_status = mean_speed if current_speed is None else current_speed
-    speed_score = min(abs(speed_for_status - 40.0) / 40.0, 1.0)
-    high_speed = high_speed_duration >= ABNORMAL_SPEED_DURATION
-
-    components = {
-        "Bottom Dwelling": 0.22 * bottom_score,
-        "Freezing": 0.22 * min(freeze_time / 20.0, 1.0),
-        "Abnormal Speed": 0.16 * speed_score,
-        "Erratic Swimming": 0.10 * min(crossings / 15.0, 1.0),
-        "Low Surface Activity": 0.10 * (1 - min(top_ratio / 0.30, 1.0)),
-        "Prolonged Bottom Stay": 0.12 * min(longest_bottom / 30.0, 1.0),
-        "Frequent Surfacing": 0.08 * min(surface_visits / 20.0, 1.0),
-    }
-
-    score = max(0.0, min(sum(components.values()), 1.0))
-    reason = max(components, key=components.get)
-
-    if high_speed:
-        return max(score, 0.60), "High Stress", (0, 0, 255), "Abnormal Speed"
-    if score < 0.30:
-        return score, "Healthy", (0, 255, 0), "Normal"
-    if score < 0.60:
-        return score, "Mild Stress", (0, 255, 255), reason
-    return score, "High Stress", (0, 0, 255), reason
-
-def classify_tank_stress(scores):
-    """Return live whole-tank stress classification from visible fish scores."""
-    if not scores:
-        return 0.0, "Healthy", (0, 255, 0)
-    score = float(np.mean(scores))
-    if score < 0.30:
-        return score, "Healthy", (0, 255, 0)
-    if score < 0.60:
-        return score, "Mild Stress", (0, 255, 255)
-    return score, "High Stress", (0, 0, 255)
 
 def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior, current_fps=30.0, dt=0.033):
     """Draw bounding boxes, region lines, 3-line fish tags, countdown timer, FPS, and tank stress on frame."""
