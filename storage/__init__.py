@@ -1,0 +1,1 @@
+"""Local durable data storage."""

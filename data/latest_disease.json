@@ -1,0 +1,12 @@
+{
+  "disease": "Healthy Fish",
+  "disease_probability": 0.0,
+  "confidence": 1.0,
+  "reason": "No abnormal visual symptoms or reported text symptoms detected.",
+  "breakdown": {
+    "yolo_class": "Healthy",
+    "yolo_confidence": 1.0,
+    "symptom_confidence": 0.0
+  },
+  "timestamp": "2026-08-12T19:39:11.701268+00:00"
+}

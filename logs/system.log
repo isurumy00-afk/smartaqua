@@ -1,0 +1,4 @@
+2026-08-13T01:09:10+0530 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB1: No module named 'pymodbus'
+2026-08-13T01:09:11+0530 [WARNING] [vision.side_camera] Side Camera (index 0) is unavailable
+2026-08-13T01:09:11+0530 [WARNING] [vision.side_camera] Side Camera (index 1) is unavailable
+2026-08-13T01:09:48+0530 [INFO] [ml.water_quality_predictor] Loaded water quality model: rfr_model.pkl

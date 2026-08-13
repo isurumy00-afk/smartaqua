@@ -1,0 +1,101 @@
+{
+    "best_model": "LSTM",
+    "best_model_type": "keras",
+    "best_model_path": "models/water_quality/best_water_quality_model.keras",
+    "best_f1_score": 0.9487179487179487,
+    "features": [
+        "PH",
+        "AMMONIA",
+        "TEMP",
+        "TURBIDITY"
+    ],
+    "target": "label",
+    "label_mapping": {
+        "0": "GOOD WATER QUALITY",
+        "1": "BAD WATER QUALITY"
+    },
+    "models_trained": {
+        "LR": {
+            "name": "Logistic Regression",
+            "path": "models/water_quality/lr_model.pkl",
+            "type": "sklearn_classifier"
+        },
+        "RFR": {
+            "name": "Random Forest Regressor",
+            "path": "models/water_quality/rfr_model.pkl",
+            "type": "sklearn_regressor",
+            "threshold": 0.5
+        },
+        "LSTM": {
+            "name": "Long Short-Term Memory Neural Network",
+            "path": "models/water_quality/lstm_model.keras",
+            "type": "keras_binary_classifier",
+            "threshold": 0.5,
+            "input_shape": [
+                4,
+                1
+            ]
+        }
+    },
+    "scaler_path": "models/water_quality/scaler.pkl",
+    "shap_background_path": "models/water_quality/shap_background.pkl",
+    "shap_background_size": 200,
+    "original_dataset_column_mapping": {
+        "AMMONIA(mg/l)": "AMMONIA",
+        "MANGANESE(mg/l)": "MANGANESE",
+        "NITRATE(PPM)": "NITRATE"
+    },
+    "results": {
+        "LR": {
+            "accuracy": 0.8460736622654621,
+            "precision": 0.8694362017804155,
+            "recall": 0.8144544822793607,
+            "f1_score": 0.8410477215644062,
+            "confusion_matrix": [
+                [
+                    1263,
+                    176
+                ],
+                [
+                    267,
+                    1172
+                ]
+            ],
+            "classification_report": "              precision    recall  f1-score   support\n\n        GOOD       0.83      0.88      0.85      1439\n         BAD       0.87      0.81      0.84      1439\n\n    accuracy                           0.85      2878\n   macro avg       0.85      0.85      0.85      2878\nweighted avg       0.85      0.85      0.85      2878\n"
+        },
+        "RFR": {
+            "accuracy": 0.9485753995830438,
+            "precision": 0.946712802768166,
+            "recall": 0.9506601806810285,
+            "f1_score": 0.9486823855755895,
+            "confusion_matrix": [
+                [
+                    1362,
+                    77
+                ],
+                [
+                    71,
+                    1368
+                ]
+            ],
+            "classification_report": "              precision    recall  f1-score   support\n\n        GOOD       0.95      0.95      0.95      1439\n         BAD       0.95      0.95      0.95      1439\n\n    accuracy                           0.95      2878\n   macro avg       0.95      0.95      0.95      2878\nweighted avg       0.95      0.95      0.95      2878\n"
+        },
+        "LSTM": {
+            "accuracy": 0.9485753995830438,
+            "precision": 0.9460953697304768,
+            "recall": 0.95135510771369,
+            "f1_score": 0.9487179487179487,
+            "confusion_matrix": [
+                [
+                    1361,
+                    78
+                ],
+                [
+                    70,
+                    1369
+                ]
+            ],
+            "classification_report": "              precision    recall  f1-score   support\n\n        GOOD       0.95      0.95      0.95      1439\n         BAD       0.95      0.95      0.95      1439\n\n    accuracy                           0.95      2878\n   macro avg       0.95      0.95      0.95      2878\nweighted avg       0.95      0.95      0.95      2878\n"
+        }
+    }
+}

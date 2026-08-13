@@ -1,0 +1,19 @@
+{
+  "feature_importance": {
+    "PH": 0.0,
+    "IONCONCENTRATION": 0.0,
+    "TEMP": 100.0,
+    "TURBIDITY": 0.0
+  },
+  "contribution_percentages": {
+    "PH": 0.0,
+    "IONCONCENTRATION": 0.0,
+    "TEMP": 100.0,
+    "TURBIDITY": 0.0
+  },
+  "natural_language_explanation": "Low temp contributed 100.0%. Normal ph contributed 0.0%. Normal ionconcentration contributed 0.0%. Normal turbidity contributed 0.0%.",
+  "primary_factor": "TEMP",
+  "primary_contribution_percentage": 100.0,
+  "shap_backend": "SHAP library active",
+  "timestamp": "2026-08-12T19:40:10.790252+00:00"
+}

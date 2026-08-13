@@ -1,0 +1,25 @@
+{
+  "diag_test_task": {
+    "task_name": "diag_test_task",
+    "last_execution_time": "2026-08-01T16:51:37.241453+00:00",
+    "success": true,
+    "runtime_seconds": 0.0,
+    "exception_count": 0,
+    "restart_count": 0,
+    "is_slow": false,
+    "last_error": "",
+    "status": "HEALTHY"
+  },
+  "timestamp": "2026-07-24T16:21:12.443650+00:00",
+  "test_task": {
+    "task_name": "test_task",
+    "last_execution_time": "2026-08-13T00:00:00Z",
+    "success": true,
+    "runtime_seconds": 0.5,
+    "exception_count": 0,
+    "restart_count": 0,
+    "is_slow": false,
+    "last_error": "",
+    "status": "HEALTHY"
+  }
+}

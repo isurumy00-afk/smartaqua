@@ -1,0 +1,51 @@
+{
+  "cameras": {
+    "side_camera_index": 0,
+    "top_camera_index": 1
+  },
+  "sensor_config": {
+    "arduino_serial_port": "/dev/ttyAMA0",
+    "arduino_baudrate": 9600,
+    "ionconcentration_serial_port": "/dev/ttyUSB1",
+    "ionconcentration_baudrate": 9600,
+    "ionconcentration_bytesize": 8,
+    "ionconcentration_parity": "N",
+    "ionconcentration_stopbits": 1,
+    "ionconcentration_timeout": 1,
+    "ionconcentration_device_id": 1,
+    "ionconcentration_address": 20
+  },
+  "task_intervals": {
+    "sensor": 1,
+    "top_stream": 2,
+    "manual_feed": 1,
+    "disease": 5,
+    "hunger": 30,
+    "water_quality": 300,
+    "watchdog": 10
+  },
+  "vision": {
+    "fish_confidence": 0.20,
+    "max_tracked_fish": 4,
+    "top_region_percent": 0.30,
+    "bottom_region_percent": 0.25,
+    "freeze_speed_threshold": 5.0,
+    "abnormal_speed_threshold": 100.0,
+    "abnormal_speed_duration": 3.0
+  },
+  "servo": {
+    "pin": 18,
+    "minimum_angle": 0,
+    "maximum_angle": 65,
+    "max_daily_feedings": 10,
+    "pwm_frequency": 50
+  },
+  "dashboard": {
+    "dashboard_host": "0.0.0.0",
+    "dashboard_port": 5000,
+    "dashboard_enabled": true
+  },
+  "firebase": {
+    "firebase_database_url": "https://smart-aquarium-default-rtdb.firebaseio.com"
+  }
+}
