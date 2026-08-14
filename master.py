@@ -115,10 +115,12 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
             if s["last"] is not None:
                 disp = math.dist(s["last"], (cx, cy))
                 if disp < 5.0:
-                    s["freeze"] += dt
                     s["current_immobile_seconds"] += dt
-                    if s["current_immobile_seconds"] >= 2.0 and (s["current_immobile_seconds"] - dt) < 2.0:
-                        s["immobility_events"] += 1
+                    # Only count as freeze time after 5s of continuous immobility
+                    if s["current_immobile_seconds"] >= 5.0:
+                        s["freeze"] += dt
+                        if (s["current_immobile_seconds"] - dt) < 5.0:
+                            s["immobility_events"] += 1
                 else:
                     s["current_immobile_seconds"] = 0.0
 
