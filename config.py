@@ -49,7 +49,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "watchdog": 10,
     },
     "vision": {
-        "fish_confidence": 0.20,
+        "fish_confidence": 0.50,
         "max_tracked_fish": 4,
         "top_region_percent": 0.30,
         "bottom_region_percent": 0.25,
