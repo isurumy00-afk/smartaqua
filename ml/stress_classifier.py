@@ -6,12 +6,12 @@ Calculates individual fish stress level based on 3 behavioral categories and 9 m
    - Longest bottom stay
    - Number of bottom entries
 
-2. Top Feeding Area Activity (Weight: 35%)
+2. Top Feeding Area Activity (Weight: 25%)
    - % time in top zone
    - Top visits/min
    - Time between top visits
 
-3. Freezing / Spatial Immobility (Weight: 30%)
+3. Freezing / Spatial Immobility (Weight: 40%)
    - Immobility duration
    - Immobility events/min
 """
@@ -53,20 +53,20 @@ def classify_stress(
     bottom_score = 0.45 * f1_bottom_pct + 0.35 * f2_longest_stay + 0.20 * f3_bottom_entries
     bottom_component = 0.35 * bottom_score
 
-    # ── Category 2: Top Feeding Area Activity (Weight: 35%) ──
+    # ── Category 2: Top Feeding Area Activity (Weight: 25%) ──
     f4_top_pct = min(top_ratio / 0.30, 1.0)
     f5_top_visits_rate = min((surface_visits / minutes) / 4.0, 1.0)
     f6_time_between_visits = min(time_between_top_visits / 45.0, 1.0)
 
     top_activity_score = 0.45 * f4_top_pct + 0.35 * f5_top_visits_rate + 0.20 * (1.0 - f6_time_between_visits)
-    top_component = 0.35 * (1.0 - top_activity_score)
+    top_component = 0.25 * (1.0 - top_activity_score)
 
-    # ── Category 3: Freezing / Spatial Immobility (Weight: 30%) ──
-    f7_immobility_dur = min(freeze_time / 15.0, 1.0)
+    # ── Category 3: Freezing / Spatial Immobility (Weight: 40%) ──
+    f7_immobility_dur = min(freeze_time / 10.0, 1.0)
     f8_immobility_events_rate = min((immobility_events / minutes) / 3.0, 1.0)
 
     freeze_score = 0.60 * f7_immobility_dur + 0.40 * f8_immobility_events_rate
-    freeze_component = 0.30 * freeze_score
+    freeze_component = 0.40 * freeze_score
 
     # ── Overall Stress Score & Primary Stress Reason ──
     components = {

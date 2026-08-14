@@ -81,7 +81,7 @@ class BehaviorAnalyzer:
                     state["freeze_seconds"] += dt
                     state["current_immobile_seconds"] += dt
                     # Increment immobility episode once threshold reached (e.g. 2.0s)
-                    if state["current_immobile_seconds"] >= 2.0 and (state["current_immobile_seconds"] - dt) < 2.0:
+                    if state["current_immobile_seconds"] >= 5.0 and (state["current_immobile_seconds"] - dt) < 2.0:
                         state["immobility_events"] += 1
                 else:
                     state["current_immobile_seconds"] = 0.0
