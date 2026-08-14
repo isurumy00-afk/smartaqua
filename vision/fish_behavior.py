@@ -80,10 +80,10 @@ class BehaviorAnalyzer:
                 if disp < 5.0:
                     state["current_immobile_seconds"] += dt
                     # Only count as freeze time after 5s of continuous immobility
-                    if state["current_immobile_seconds"] >= 5.0:
+                    if state["current_immobile_seconds"] >= 10.0:
                         state["freeze_seconds"] += dt
-                        # Increment immobility episode once at the 5s crossing
-                        if (state["current_immobile_seconds"] - dt) < 5.0:
+                        # Increment immobility episode once at the 10s crossing
+                        if (state["current_immobile_seconds"] - dt) < 10.0:
                             state["immobility_events"] += 1
                 else:
                     state["current_immobile_seconds"] = 0.0

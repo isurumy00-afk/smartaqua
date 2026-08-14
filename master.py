@@ -116,10 +116,10 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
                 disp = math.dist(s["last"], (cx, cy))
                 if disp < 5.0:
                     s["current_immobile_seconds"] += dt
-                    # Only count as freeze time after 5s of continuous immobility
-                    if s["current_immobile_seconds"] >= 5.0:
+                    # Only count as freeze time after 10s of continuous immobility
+                    if s["current_immobile_seconds"] >= 10.0:
                         s["freeze"] += dt
-                        if (s["current_immobile_seconds"] - dt) < 5.0:
+                        if (s["current_immobile_seconds"] - dt) < 10.0:
                             s["immobility_events"] += 1
                 else:
                     s["current_immobile_seconds"] = 0.0
@@ -170,9 +170,8 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
             # 1. Draw colored bounding box matching stress state (Green / Yellow / Red)
             cv2.rectangle(vis, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
 
-            # 2. Draw 3 lines of tags above bounding box
-            for text, y in ((f"ID {tid}", y1 - 45),
-                            (f"{label} ({score:.2f})", y1 - 25),
+            # 2. Draw 2 lines of tags above bounding box
+            for text, y in ((f"{label} ({score:.2f})", y1 - 20),
                             (reason, y1 - 5)):
                 cv2.putText(vis, text, (int(x1), int(y)), cv2.FONT_HERSHEY_SIMPLEX,
                             0.50, color, 2)
@@ -249,7 +248,7 @@ def stage_sensors_and_stress():
     frame_count = 0
     current_fps = 30.0
     last_frame_time = time.time()
-    actual_dt = 0.033
+    actual_dt = 0.667  # ~1.5 FPS on Pi 4B; self-corrects from frame 2 onward
     tracks = []
 
     print(f"  |-- Starting 3-minute visual stress observation at ~30 FPS (press 'q' to skip)...")
@@ -277,8 +276,8 @@ def stage_sensors_and_stress():
             # Run fish detection & tracking
             tracks = FISH_TRACKER.track(frame)
 
-            # Accumulate behavioral metrics across frames
-            behavior_metrics = BEHAVIOR_ANALYZER.analyze(tracks, frame_height=frame_h)
+            # Accumulate behavioral metrics across frames (dt = real elapsed time per frame)
+            behavior_metrics = BEHAVIOR_ANALYZER.analyze(tracks, frame_height=frame_h, dt=max(0.01, actual_dt))
 
             # Periodically recalculate stress for the live HUD
             if elapsed - last_stress_update >= STRESS_UPDATE_INTERVAL:
