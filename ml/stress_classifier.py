@@ -14,6 +14,15 @@ Calculates individual fish stress level based on 3 behavioral categories and 9 m
 3. Freezing / Spatial Immobility (Weight: 40%)
    - Immobility duration
    - Immobility events/min
+
+Sensor Fusion Layer (applied on top of visual score):
+- Visual behavior stress:  60% weight
+- pH sensor stress:        20% weight
+- EC (ion conc.) stress:   20% weight
+
+Healthy ranges used for sensor scoring:
+- pH:  6.5 – 7.5  (saturates at ±1.5 pH units from boundary)
+- EC:  100 – 500 μS/cm (saturates at 100 below / 300 above boundary)
 """
 
 from typing import Dict, Any, List, Tuple
@@ -97,8 +106,67 @@ def classify_tank_stress(scores: List[float]) -> Tuple[float, str, Tuple[int, in
     return score, "High Stress", (0, 0, 255)
 
 
+def score_ph(ph_value: float) -> float:
+    """Convert a pH reading into a normalized stress score [0.0 – 1.0].
+
+    Healthy range: 6.5 – 7.5 pH
+    Score saturates at 1.0 when 1.5 pH units outside the healthy boundary.
+    Returns 0.0 if ph_value is None or invalid.
+    """
+    if ph_value is None:
+        return 0.0
+    try:
+        ph = float(ph_value)
+    except (TypeError, ValueError):
+        return 0.0
+
+    if 6.5 <= ph <= 7.5:
+        return 0.0
+    deviation = (6.5 - ph) if ph < 6.5 else (ph - 7.5)
+    return float(min(deviation / 1.5, 1.0))
+
+
+def score_ec(ec_value: float) -> float:
+    """Convert an EC / ion-concentration reading into a normalized stress score [0.0 – 1.0].
+
+    Healthy range: 100 – 500 μS/cm
+    Below 100: saturates at 1.0 when EC reaches 0.
+    Above 500: saturates at 1.0 when EC reaches 800 (300 μS/cm above upper boundary).
+    Returns 0.0 if ec_value is None or invalid.
+    """
+    if ec_value is None:
+        return 0.0
+    try:
+        ec = float(ec_value)
+    except (TypeError, ValueError):
+        return 0.0
+
+    if 100.0 <= ec <= 500.0:
+        return 0.0
+    if ec < 100.0:
+        return float(min((100.0 - ec) / 100.0, 1.0))
+    return float(min((ec - 500.0) / 300.0, 1.0))
+
+
+def _level_label(score: float) -> str:
+    """Map a stress score to a human-readable label."""
+    if score < 0.30:
+        return "Healthy"
+    if score < 0.60:
+        return "Mild Stress"
+    return "High Stress"
+
+
 def classify(behavior_data: Dict[str, Any], sensor_data: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Wrapper function returning standard dictionary format for system JSON persistence."""
+    """Wrapper function returning standard dictionary format for system JSON persistence.
+
+    Produces two stress results:
+    - Visual-only:  pure behavior-based tank stress (existing pipeline)
+    - Fused:        visual (60%) + pH sensor (20%) + EC sensor (20%)
+
+    If sensor_data is None or a sensor value is missing, that component
+    contributes 0 to the fused score (graceful degradation).
+    """
     fish_details = behavior_data.get("fish_details", [])
     per_fish_stress = []
     scores = []
@@ -129,10 +197,52 @@ def classify(behavior_data: Dict[str, Any], sensor_data: Dict[str, Any] = None) 
             "primary_reason": reason
         })
 
+    # ── Visual-only tank score ──
     tank_score, tank_level, _ = classify_tank_stress(scores)
 
+    # ── Sensor stress components ──
+    sd = sensor_data or {}
+    ph_val  = sd.get("ph",             {}).get("value")
+    ec_val  = sd.get("ionconcentration", {}).get("value")
+
+    ph_score = score_ph(ph_val)
+    ec_score = score_ec(ec_val)
+
+    sensors_available = (ph_val is not None) or (ec_val is not None)
+
+    # ── Sensor fusion (60% visual + 20% pH + 20% EC) ──
+    fused_score = round(
+        max(0.0, min(0.60 * tank_score + 0.20 * ph_score + 0.20 * ec_score, 1.0)),
+        3
+    )
+    fused_level = _level_label(fused_score)
+
+    # Determine primary reason for fused result
+    fused_components = {
+        "Behavior": 0.60 * tank_score,
+        "pH Out of Range": 0.20 * ph_score,
+        "EC Out of Range": 0.20 * ec_score,
+    }
+    fused_reason = max(fused_components, key=fused_components.get)
+
+    LOG.debug(
+        "Stress — visual=%.3f  pH=%.3f (raw=%s)  EC=%.3f (raw=%s)  fused=%.3f",
+        tank_score, ph_score, ph_val, ec_score, ec_val, fused_score,
+    )
+
     return {
+        # ── Visual-only result (unchanged pipeline) ──
         "tank_stress_score": round(tank_score, 3),
         "tank_stress_level": tank_level,
-        "per_fish_stress": per_fish_stress
+        "per_fish_stress": per_fish_stress,
+
+        # ── Sensor stress components ──
+        "ph_stress_score": round(ph_score, 3),
+        "ec_stress_score": round(ec_score, 3),
+        "sensors_used": sensors_available,
+
+        # ── Fused result ──
+        "fused_stress_score": fused_score,
+        "fused_stress_level": fused_level,
+        "fused_primary_reason": fused_reason,
     }

@@ -34,11 +34,12 @@
     "abnormal_speed_duration": 3.0
   },
   "servo": {
-    "pin": 18,
+    "pin": 12,
     "minimum_angle": 0,
-    "maximum_angle": 65,
+    "maximum_angle": 180,
     "max_daily_feedings": 10,
-    "pwm_frequency": 50
+    "pwm_frequency": 50,
+    "rotation_rounds": 1
   },
   "dashboard": {
     "dashboard_host": "0.0.0.0",

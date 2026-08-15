@@ -25,7 +25,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 DATASET_DIR = BASE_DIR / "dataset"
-IMAGES_DIR = DATASET_DIR / "images"
+IMAGES_DIR = DATASET_DIR / "."
 LABELS_DIR = DATASET_DIR / "labels"
 PREVIEW_DIR = DATASET_DIR / "annotated_preview"
 YAML_PATH = DATASET_DIR / "dataset.yaml"

@@ -1,11 +1,14 @@
 """Isolated MG90 Micro Servo Controller module for Automatic Feeding.
 
-Provides hardware PWM angle control mapped to detected hungry fish count:
+Provides multi-round CW & CCW hardware PWM angle control mapped to detected hungry fish count:
 - 0 fish -> 0°
 - 1 fish -> 20°
 - 2 fish -> 35°
 - 3 fish -> 50°
 - 4 fish -> 65°
+
+Each feeding cycle performs 2 rounds of Clockwise (CW) rotation to target angle and 
+Counter-Clockwise (CCW) rotation back to 0° baseline to dispense food.
 
 Features safety limits, manual override, daily feeding counters, and graceful fallback when offline.
 """
@@ -42,56 +45,78 @@ class FeederServo:
             self.manual_override_angle = None
             LOG.info("Manual servo override cleared.")
 
+    def calculate_rounds(self, hungry_count: int) -> int:
+        """Calculate number of rotation rounds based on hungry fish count."""
+        if hungry_count <= 0:
+            return 0
+        # Number of rounds equals number of hungry fish detected
+        return max(1, int(hungry_count))
+
     def calculate_angle(self, hungry_count: int) -> int:
-        """Calculate target servo angle for given hungry fish count."""
+        """Return full sweep angle (180° CW) for servo actuation."""
         if self.manual_override_angle is not None:
             return self.manual_override_angle
-
-        count = max(0, min(int(hungry_count), len(self.config.feed_angles) - 1))
-        target = self.config.feed_angles[count] + self.calibration_offset
-        return max(self.config.minimum_angle, min(target, self.config.maximum_angle))
+        return self.config.maximum_angle
 
     def dispense(self, hungry_count: int) -> Dict[str, Any]:
-        """Perform feeding cycle if daily limits are not exceeded.
+        """Perform feeding cycle based on hungry fish count.
+        
+        Rotates full CW (0° to 180°) and CCW (180° to 0°).
+        Number of rounds performed equals the number of hungry fish detected.
         
         Returns status dictionary:
-        {"angle": int, "dispensed": bool, "daily_count": int}
+        {"angle": int, "rounds": int, "dispensed": bool, "daily_count": int}
         """
         if self.daily_feed_count >= self.config.max_daily_feedings:
             LOG.warning("Maximum daily feeding limit reached (%d)", self.config.max_daily_feedings)
             return {
                 "angle": 0,
+                "rounds": 0,
                 "dispensed": False,
                 "reason": "Max daily feeding limit reached",
                 "daily_count": self.daily_feed_count,
             }
 
+        rounds = self.calculate_rounds(hungry_count)
         angle = self.calculate_angle(hungry_count)
 
-        if hungry_count == 0 and self.manual_override_angle is None:
+        if rounds == 0 and self.manual_override_angle is None:
             return {
                 "angle": 0,
+                "rounds": 0,
                 "dispensed": False,
                 "reason": "No hungry fish detected",
                 "daily_count": self.daily_feed_count,
             }
 
-        # Hardware PWM actuation on Raspberry Pi GPIO pin
-        hardware_actuated = self._actuate_hardware_pwm(angle)
+        # Manual feed trigger fallback (if hungry_count is 0 but manual override active)
+        if rounds == 0 and self.manual_override_angle is not None:
+            rounds = 1
 
-        if angle > 0:
+        # Hardware PWM actuation on Raspberry Pi GPIO pin (CW & CCW full rotation rounds)
+        hardware_actuated = self._actuate_hardware_pwm(angle=angle, rounds=rounds)
+
+        if rounds > 0:
             self.daily_feed_count += 1
 
         return {
             "angle": angle,
+            "rounds": rounds,
             "dispensed": True,
             "hungry_count": hungry_count,
             "daily_count": self.daily_feed_count,
             "hardware_actuated": hardware_actuated,
         }
 
-    def _actuate_hardware_pwm(self, angle: int) -> bool:
-        """Isolated hardware actuation using RPi.GPIO or gpiozero."""
+    def _actuate_hardware_pwm(self, angle: int = 180, rounds: int = 1) -> bool:
+        """Isolated hardware PWM actuation using RPi.GPIO.
+        
+        Performs full CW rotation (0° to target angle, default 180°) and 
+        CCW rotation back to 0° for the specified number of rounds (1 round per hungry fish).
+        """
+        if rounds <= 0:
+            return False
+
         try:
             import RPi.GPIO as GPIO
             import time
@@ -101,9 +126,18 @@ class FeederServo:
             pwm = GPIO.PWM(self.config.pin, self.config.pwm_frequency)
             pwm.start(0)
 
-            duty_cycle = 2.5 + (angle / 180.0) * 10.0
-            pwm.ChangeDutyCycle(duty_cycle)
-            time.sleep(0.5)
+            duty_home = 2.5  # 0° baseline position (full CCW)
+            duty_target = 2.5 + (angle / 180.0) * 10.0  # target angle position (180° full CW)
+
+            for round_idx in range(rounds):
+                LOG.info("Executing feeding round %d/%d (Full CW 0°->%d° & CCW ->0°)", round_idx + 1, rounds, angle)
+                # Full Clockwise (CW) rotation
+                pwm.ChangeDutyCycle(duty_target)
+                time.sleep(0.5)
+                # Full Counter-Clockwise (CCW) rotation back to 0° baseline
+                pwm.ChangeDutyCycle(duty_home)
+                time.sleep(0.5)
+
             pwm.stop()
             GPIO.cleanup(self.config.pin)
             return True

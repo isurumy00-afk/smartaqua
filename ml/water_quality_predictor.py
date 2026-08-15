@@ -1,36 +1,107 @@
-"""Water Quality Predictor module using trained machine learning models.
+"""Water Quality Predictor and SHAP Explainable AI Module.
 
-Predicts:
-- Water Quality Index (Good, Fair, Poor, Critical)
-- Bad Water Probability
-- Prediction Confidence
-- Estimated hours until water change required
+Predicts water quality using pre-trained ML models (LSTM, Random Forest Regressor, Logistic Regression)
+with features: ["PH", "IONCONCENTRATION", "TEMP", "TURBIDITY"].
+
+Supports:
+- Ion concentration from RS485 Modbus RTU reader
+- pH, Temperature, and Turbidity from Arduino Uno serial reader
+- Explainable AI (SHAP) feature contribution analysis and visualizations
 """
 
+import os
 import json
+import warnings
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Union, Optional
+
 import numpy as np
+import pandas as pd
 import joblib
+
 from config import WATER_QUALITY_MODEL_DIR
 from utils.logger import get_logger
 
 LOG = get_logger(__name__)
 
+warnings.filterwarnings("ignore")
+
 FEATURES = ["PH", "IONCONCENTRATION", "TEMP", "TURBIDITY"]
+DEFAULT_THRESHOLD = 0.5
+
+
+def safe_filename(text: str) -> str:
+    """Makes filenames safe for chart exports."""
+    text = str(text).lower().replace(" ", "_").replace("-", "_")
+    allowed = "abcdefghijklmnopqrstuvwxyz0123456789_"
+    return "".join(ch for ch in text if ch in allowed)
+
+
+def normalize_shap_values(shap_values_raw: Any) -> np.ndarray:
+    """Normalizes SHAP output into shape: (rows, features)."""
+    if isinstance(shap_values_raw, list):
+        shap_values_raw = shap_values_raw[0]
+
+    shap_values_array = np.array(shap_values_raw)
+
+    if shap_values_array.ndim == 3:
+        if shap_values_array.shape[2] == 1:
+            shap_values_array = shap_values_array[:, :, 0]
+        elif shap_values_array.shape[2] == 2:
+            shap_values_array = shap_values_array[:, :, 1]
+
+    return shap_values_array
 
 
 class WaterQualityPredictor:
-    """Predicts water quality health from sensor reading inputs."""
+    """Water Quality ML Predictor & SHAP Explainer."""
 
-    def __init__(self, model_dir: Path = WATER_QUALITY_MODEL_DIR):
-        self.model_dir = model_dir
+    def __init__(self, model_dir: Union[str, Path] = WATER_QUALITY_MODEL_DIR):
+        self.model_dir = Path(model_dir)
+        self.output_dir = self.model_dir / "xai_outputs"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
         self.model = None
         self.scaler = None
-        self.metadata = None
+        self.shap_background = None
+        self.metadata = {}
+        self.model_runtime_type: str = "unknown"
+        self.model_path: Optional[Path] = None
+        self.threshold: float = DEFAULT_THRESHOLD
+
+        self._load_artifacts()
+
+    def _resolve_best_model_path(self) -> Path:
+        """Resolves path to best model file (pkl or keras)."""
+        metadata_model_path = self.metadata.get("best_model_path")
+        if metadata_model_path:
+            meta_path = Path(metadata_model_path)
+            if meta_path.exists():
+                return meta_path
+            rel_meta_path = self.model_dir / meta_path.name
+            if rel_meta_path.exists():
+                return rel_meta_path
+
+        pkl_path = self.model_dir / "best_water_quality_model.pkl"
+        keras_path = self.model_dir / "best_water_quality_model.keras"
+
+        if pkl_path.exists():
+            return pkl_path
+        if keras_path.exists():
+            return keras_path
+
+        # Fallback search for any model file in model_dir
+        for alt_name in ("lstm_model.keras", "rfr_model.pkl", "lr_model.pkl"):
+            alt_path = self.model_dir / alt_name
+            if alt_path.exists():
+                return alt_path
+
+        raise FileNotFoundError(
+            f"Could not find best model file in {self.model_dir}. Expected best_water_quality_model.pkl or .keras"
+        )
 
     def _load_artifacts(self) -> bool:
-        """Load scaler and pre-trained Random Forest or regression model."""
+        """Load scaler, model, metadata, and SHAP background data."""
         if self.model is not None:
             return True
 
@@ -41,92 +112,124 @@ class WaterQualityPredictor:
         try:
             metadata_path = self.model_dir / "model_metadata.json"
             if metadata_path.exists():
-                self.metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    self.metadata = json.load(f)
 
             scaler_path = self.model_dir / "scaler.pkl"
             if scaler_path.exists():
                 self.scaler = joblib.load(scaler_path)
+            else:
+                LOG.warning("Scaler not found at %s", scaler_path)
 
-            # Try loading Random Forest / best model pkl
-            for model_filename in ("rfr_model.pkl", "best_water_quality_model.pkl", "lr_model.pkl"):
-                path = self.model_dir / model_filename
-                if path.exists():
-                    self.model = joblib.load(path)
-                    LOG.info("Loaded water quality model: %s", model_filename)
-                    break
+            shap_bg_path = self.model_dir / "shap_background.pkl"
+            if shap_bg_path.exists():
+                self.shap_background = joblib.load(shap_bg_path)
+            else:
+                LOG.warning("SHAP background not found at %s", shap_bg_path)
 
-            return self.model is not None
+            self.model_path = self._resolve_best_model_path()
+            model_path_str = str(self.model_path)
+
+            if model_path_str.endswith(".keras"):
+                try:
+                    import tensorflow as tf
+                    self.model = tf.keras.models.load_model(model_path_str)
+                    self.model_runtime_type = "keras"
+                except Exception as ke:
+                    LOG.error("Failed to load Keras model from %s: %s", model_path_str, ke)
+                    raise
+            else:
+                self.model = joblib.load(model_path_str)
+                if hasattr(self.model, "predict_proba"):
+                    self.model_runtime_type = "sklearn_classifier"
+                else:
+                    self.model_runtime_type = "sklearn_regressor"
+
+            best_model_name = self.metadata.get("best_model")
+            models_trained = self.metadata.get("models_trained", {})
+            if best_model_name in models_trained:
+                self.threshold = models_trained[best_model_name].get("threshold", DEFAULT_THRESHOLD)
+            else:
+                self.threshold = DEFAULT_THRESHOLD
+
+            LOG.info(
+                "Loaded Water Quality Model (%s, type=%s, threshold=%.2f)",
+                self.model_path.name, self.model_runtime_type, self.threshold
+            )
+            return True
         except Exception as exc:
-            LOG.error("Error loading water quality ML artifacts: %s", exc)
+            LOG.error("Error loading water quality model artifacts: %s", exc)
             return False
 
-    def predict(self, sensor_readings: Dict[str, Any]) -> Dict[str, Any]:
-        """Perform water quality prediction based on sensor data.
+    def prepare_raw_dataframe(self, input_data: Union[pd.DataFrame, Dict[str, Any], list]) -> pd.DataFrame:
+        """Converts SHAP/model input into a clean DataFrame with correct feature order."""
+        if isinstance(input_data, pd.DataFrame):
+            raw_df = input_data.copy()
+        elif isinstance(input_data, dict):
+            raw_df = pd.DataFrame([input_data])
+        else:
+            raw_df = pd.DataFrame(input_data, columns=FEATURES)
+
+        for col in FEATURES:
+            if col not in raw_df.columns:
+                raise ValueError(f"Missing input column: {col}")
+
+        raw_df = raw_df[FEATURES].copy()
+
+        for col in FEATURES:
+            raw_df[col] = pd.to_numeric(raw_df[col], errors="coerce")
+
+        if raw_df.isnull().any().any():
+            raise ValueError("Input contains invalid numeric values.")
+
+        return raw_df
+
+    def predict_bad_probability(self, input_data: Union[pd.DataFrame, Dict[str, Any], list]) -> np.ndarray:
+        """Returns BAD water probability array for Keras, sklearn classifier, or sklearn regressor."""
+        if self.model is None or self.scaler is None:
+            if not self._load_artifacts():
+                raise RuntimeError("Water Quality Predictor model or scaler not loaded.")
+
+        raw_df = self.prepare_raw_dataframe(input_data)
+        X_scaled = self.scaler.transform(raw_df[FEATURES])
+
+        # Keras / LSTM model
+        if self.model_runtime_type == "keras":
+            X_lstm = X_scaled.reshape(X_scaled.shape[0], X_scaled.shape[1], 1)
+            bad_prob = self.model.predict(X_lstm, verbose=0).ravel()
+            return np.clip(bad_prob, 0.0, 1.0)
+
+        # Sklearn classifier (Logistic Regression, etc.)
+        if self.model_runtime_type == "sklearn_classifier":
+            probabilities = self.model.predict_proba(X_scaled)
+            classes = list(self.model.classes_)
+            bad_class_index = classes.index(1) if 1 in classes else 1
+            return probabilities[:, bad_class_index]
+
+        # Sklearn regressor (Random Forest Regressor, etc.)
+        raw_pred = self.model.predict(X_scaled)
+        return np.clip(raw_pred, 0.0, 1.0)
+
+    def extract_feature_values(self, sensor_readings: Dict[str, Any]) -> Dict[str, float]:
+        """Extracts standard feature values from sensor reading payload.
         
-        Expected input readings keys: ph, ionconcentration, temp/temperature, turbidity.
+        Reads:
+        - PH: from Arduino (key 'ph' / 'PH')
+        - IONCONCENTRATION: from Modbus RTU (key 'ionconcentration' / 'IONCONCENTRATION')
+        - TEMP: from Arduino (key 'temperature' / 'temp' / 'TEMP')
+        - TURBIDITY: from Arduino (key 'turbidity' / 'TURBIDITY')
         """
-        # Extract features with sensible defaults
-        ph = self._extract_value(sensor_readings, ["ph"], default=7.2)
-        ionconcentration = self._extract_value(sensor_readings, ["ionconcentration", "ammonia"], default=250.0)
-        temp = self._extract_value(sensor_readings, ["temperature", "temp"], default=25.5)
-        turbidity = self._extract_value(sensor_readings, ["turbidity"], default=200.0)
-
-        import pandas as pd
-        # Model artifact trained expecting columns ["PH", "AMMONIA", "TEMP", "TURBIDITY"]
-        df_input = pd.DataFrame([[ph, ionconcentration, temp, turbidity]], columns=["PH", "AMMONIA", "TEMP", "TURBIDITY"])
-
-        if self._load_artifacts() and self.scaler is not None and self.model is not None:
-            try:
-                scaled_vector = self.scaler.transform(df_input)
-                if hasattr(self.model, "predict_proba"):
-                    probs = self.model.predict_proba(scaled_vector)[0]
-                    bad_prob = float(probs[1]) if len(probs) > 1 else float(probs[0])
-                else:
-                    pred = self.model.predict(scaled_vector)[0]
-                    bad_prob = float(np.clip(pred, 0.0, 1.0))
-            except Exception as exc:
-                LOG.error("Model prediction execution error: %s", exc)
-                bad_prob = self._rule_based_fallback(ph, ionconcentration, temp, turbidity)
-        else:
-            bad_prob = self._rule_based_fallback(ph, ionconcentration, temp, turbidity)
-
-        good_prob = round(1.0 - bad_prob, 4)
-        bad_prob = round(bad_prob, 4)
-        confidence = round(float(max(good_prob, bad_prob)), 4)
-
-        if bad_prob < 0.25:
-            label = "Good"
-        elif bad_prob < 0.50:
-            label = "Fair"
-        elif bad_prob < 0.75:
-            label = "Poor"
-        else:
-            label = "Critical"
-
-        estimated_hours = round(max(0.0, 72.0 * (1.0 - bad_prob)), 1)
+        ph = self._extract_value(sensor_readings, ["ph", "PH"], default=7.25)
+        ionconc = self._extract_value(sensor_readings, ["ionconcentration", "IONCONCENTRATION"], default=345.0)
+        temp = self._extract_value(sensor_readings, ["temperature", "temp", "TEMP"], default=26.5)
+        turbidity = self._extract_value(sensor_readings, ["turbidity", "TURBIDITY"], default=820.0)
 
         return {
-            "water_quality": label,
-            "bad_probability": bad_prob,
-            "good_probability": good_prob,
-            "confidence": confidence,
-            "estimated_hours_until_water_change": estimated_hours,
-            "inputs_used": {
-                "PH": ph,
-                "IONCONCENTRATION": ionconcentration,
-                "TEMP": temp,
-                "TURBIDITY": turbidity,
-            },
+            "PH": ph,
+            "IONCONCENTRATION": ionconc,
+            "TEMP": temp,
+            "TURBIDITY": turbidity,
         }
-
-    def _rule_based_fallback(self, ph: float, ionconcentration: float, temp: float, turbidity: float) -> float:
-        """Heuristic calculation if ML model artifacts are absent."""
-        score = 0.0
-        score += 0.3 * (abs(ph - 7.0) / 2.0)
-        score += 0.4 * min(abs(ionconcentration - 250.0) / 1000.0, 1.0)
-        score += 0.15 * (abs(temp - 25.0) / 10.0)
-        score += 0.15 * min(turbidity / 1000.0, 1.0)
-        return float(np.clip(score, 0.0, 1.0))
 
     def _extract_value(self, data: Dict[str, Any], keys: list, default: float) -> float:
         for k in keys:
@@ -141,3 +244,222 @@ class WaterQualityPredictor:
                 except (ValueError, TypeError):
                     pass
         return default
+
+    def predict(
+        self,
+        sensor_readings: Dict[str, Any],
+        run_shap: bool = True,
+        save_xai: bool = False
+    ) -> Dict[str, Any]:
+        """Perform water quality prediction & SHAP explanation on sensor data."""
+        features_dict = self.extract_feature_values(sensor_readings)
+        df_input = pd.DataFrame([features_dict])[FEATURES]
+
+        try:
+            bad_prob_arr = self.predict_bad_probability(df_input)
+            bad_prob = float(bad_prob_arr[0])
+        except Exception as exc:
+            LOG.error("Model prediction failed: %s. Using rule-based fallback.", exc)
+            bad_prob = self._rule_based_fallback(features_dict)
+
+        good_prob = float(np.clip(1.0 - bad_prob, 0.0, 1.0))
+        confidence = float(max(good_prob, bad_prob))
+        predicted_label = 1 if bad_prob >= self.threshold else 0
+        water_quality_str = "BAD WATER QUALITY" if predicted_label == 1 else "GOOD WATER QUALITY"
+
+        # Human-friendly level label
+        if bad_prob < 0.25:
+            quality_level = "Good"
+        elif bad_prob < 0.50:
+            quality_level = "Fair"
+        elif bad_prob < 0.75:
+            quality_level = "Poor"
+        else:
+            quality_level = "Critical"
+
+        estimated_hours = round(max(0.0, 72.0 * (1.0 - bad_prob)), 1)
+
+        result: Dict[str, Any] = {
+            "water_quality": quality_level,
+            "water_quality_status": water_quality_str,
+            "predicted_label": predicted_label,
+            "bad_probability": round(bad_prob, 4),
+            "good_probability": round(good_prob, 4),
+            "confidence": round(confidence, 4),
+            "threshold": self.threshold,
+            "estimated_hours_until_water_change": estimated_hours,
+            "inputs_used": features_dict,
+        }
+
+        # Run SHAP Explanation if requested and background data is available
+        if run_shap:
+            shap_info = self.explain_shap(df_input, save_xai=save_xai)
+            result.update(shap_info)
+
+        return result
+
+    def explain_shap(
+        self,
+        samples_df: pd.DataFrame,
+        sample_names: Optional[list] = None,
+        save_xai: bool = False
+    ) -> Dict[str, Any]:
+        """Calculates SHAP explanations for input samples using KernelExplainer."""
+        try:
+            import shap
+        except ImportError:
+            LOG.warning("SHAP library not installed. Skipping SHAP explanation.")
+            return {"shap_status": "SHAP library not installed"}
+
+        if self.shap_background is None or self.shap_background.empty:
+            LOG.warning("SHAP background data unavailable.")
+            return {"shap_status": "SHAP background unavailable"}
+
+        background = self.shap_background[FEATURES].copy()
+        for col in FEATURES:
+            background[col] = pd.to_numeric(background[col], errors="coerce")
+        background = background.dropna()
+
+        explainer = shap.KernelExplainer(
+            self.predict_bad_probability,
+            background,
+            link="identity"
+        )
+
+        shap_values_raw = explainer.shap_values(samples_df[FEATURES], nsamples=100)
+        shap_values = normalize_shap_values(shap_values_raw)
+
+        # Process first sample for dict output
+        first_shap = shap_values[0]
+        top_index = int(np.argmax(np.abs(first_shap)))
+        top_feature = FEATURES[top_index]
+        top_value = float(first_shap[top_index])
+        top_contrib_pct = float(abs(top_value) * 100)
+
+        if top_value > 0:
+            effect = "Increased BAD probability"
+        elif top_value < 0:
+            effect = "Reduced BAD probability"
+        else:
+            effect = "No effect"
+
+        shap_per_feature = {
+            feature: float(first_shap[idx]) for idx, feature in enumerate(FEATURES)
+        }
+
+        xai_summary = {
+            "most_contributed_feature": top_feature,
+            "top_shap_value": round(top_value, 6),
+            "top_contribution_probability_points": round(top_contrib_pct, 3),
+            "xai_effect": effect,
+            "shap_values": shap_per_feature,
+            "shap_status": "active",
+        }
+
+        if save_xai and len(samples_df) > 0:
+            self._save_xai_outputs(samples_df, shap_values, sample_names)
+
+        return xai_summary
+
+    def _save_xai_outputs(
+        self,
+        samples_df: pd.DataFrame,
+        shap_values: np.ndarray,
+        sample_names: Optional[list] = None
+    ) -> None:
+        """Saves XAI bar charts and CSV summary files to xai_outputs directory."""
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+
+            names = sample_names or [f"Sample_{i+1}" for i in range(len(samples_df))]
+
+            for i, name in enumerate(names):
+                plt.figure(figsize=(8, 4))
+                plt.bar(FEATURES, shap_values[i])
+                plt.axhline(0, color="black", linewidth=0.8)
+                plt.ylabel("SHAP value toward BAD probability")
+                plt.title(f"{name} - SHAP Contributions")
+                plt.tight_layout()
+
+                chart_filename = safe_filename(name) + "_shap_bar.png"
+                chart_path = self.output_dir / chart_filename
+                plt.savefig(chart_path)
+                plt.close()
+
+            # Global importance
+            mean_abs_shap = np.abs(shap_values).mean(axis=0)
+            global_importance = pd.DataFrame({
+                "feature": FEATURES,
+                "mean_abs_shap": mean_abs_shap,
+                "mean_abs_probability_points": mean_abs_shap * 100
+            }).sort_values(by="mean_abs_shap", ascending=False)
+
+            plt.figure(figsize=(8, 4))
+            plt.bar(global_importance["feature"], global_importance["mean_abs_probability_points"])
+            plt.ylabel("Mean absolute SHAP value")
+            plt.title("Overall SHAP Importance")
+            plt.tight_layout()
+            plt.savefig(self.output_dir / "overall_shap_importance.png")
+            plt.close()
+
+            global_importance.to_csv(self.output_dir / "xai_global_importance.csv", index=False)
+            LOG.info("Saved XAI charts and CSV outputs to %s", self.output_dir)
+        except Exception as exc:
+            LOG.warning("Failed to save XAI visualization outputs: %s", exc)
+
+    def _rule_based_fallback(self, features: Dict[str, float]) -> float:
+        """Fallback score calculator if ML model fails."""
+        ph = features.get("PH", 7.25)
+        ionconc = features.get("IONCONCENTRATION", 345.0)
+        temp = features.get("TEMP", 26.5)
+        turbidity = features.get("TURBIDITY", 820.0)
+
+        score = 0.0
+        score += 0.30 * (abs(ph - 7.25) / 2.0)
+        score += 0.40 * min(max(0.0, ionconc - 350.0) / 200.0, 1.0)
+        score += 0.15 * (abs(temp - 26.5) / 10.0)
+        score += 0.15 * min(turbidity / 1000.0, 1.0)
+        return float(np.clip(score, 0.0, 1.0))
+
+
+if __name__ == "__main__":
+    print("Testing Water Quality Predictor & SHAP XAI Module...")
+
+    predictor = WaterQualityPredictor()
+
+    samples = pd.DataFrame([
+        {
+            "sample_name": "Sample 1 - Expected GOOD Water",
+            "PH": 7.25,
+            "IONCONCENTRATION": 345.0,
+            "TEMP": 26.50,
+            "TURBIDITY": 820
+        },
+        {
+            "sample_name": "Sample 2 - Expected BAD Water",
+            "PH": 5.40,
+            "IONCONCENTRATION": 560.0,
+            "TEMP": 34.80,
+            "TURBIDITY": 280
+        }
+    ])
+
+    print("\nRunning predictions...")
+    bad_probs = predictor.predict_bad_probability(samples)
+    
+    for i, row in samples.iterrows():
+        prob = bad_probs[i]
+        label = "BAD WATER QUALITY" if prob >= predictor.threshold else "GOOD WATER QUALITY"
+        print(f"\n{row['sample_name']}:")
+        print(f"  PH: {row['PH']}, ION: {row['IONCONCENTRATION']}, TEMP: {row['TEMP']}, TURB: {row['TURBIDITY']}")
+        print(f"  BAD Probability: {prob:.4f} -> {label}")
+
+    print("\nRunning SHAP Explanation on 2 samples...")
+    shap_info = predictor.explain_shap(
+        samples[FEATURES],
+        sample_names=samples["sample_name"].tolist(),
+        save_xai=True
+    )
+    print("SHAP Summary Output:", json.dumps(shap_info, indent=2))

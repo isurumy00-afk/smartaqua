@@ -364,14 +364,14 @@ def check_functional_contracts():
     except Exception as exc:
         reporter.add_result(cat, "Stress Classifier ML", "FAIL", f"Stress Classifier error: {exc}")
 
-    # Test Feeder Servo Angle Calculator
+    # Test Feeder Servo Angle & Round Logic
     try:
         from feeding.servo import FeederServo
         servo = FeederServo()
-        angle = servo.dispense(hungry_count=2)
-        reporter.add_result(cat, "Feeder Servo Angle Logic", "PASS", f"Hungry count 2 -> Angle {angle}°")
+        feed_res = servo.dispense(hungry_count=2)
+        reporter.add_result(cat, "Feeder Servo Logic", "PASS", f"Hungry count 2 -> Rounds {feed_res.get('rounds')} (Full CW/CCW {feed_res.get('angle')}°)")
     except Exception as exc:
-        reporter.add_result(cat, "Feeder Servo Angle Logic", "FAIL", f"Feeder Servo error: {exc}")
+        reporter.add_result(cat, "Feeder Servo Logic", "FAIL", f"Feeder Servo error: {exc}")
 
     # Test NLP Symptom Parser & Fusion with CV Detection
     try:

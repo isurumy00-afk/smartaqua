@@ -55,12 +55,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "bottom_region_percent": 0.25,
     },
     "servo": {
-        "pin": 18,
+        "pin": 12,
         "minimum_angle": 0,
-        "maximum_angle": 65,
-        "feed_angles": [0, 20, 35, 50, 65],
+        "maximum_angle": 180,
+        "feed_angles": [0, 180, 180, 180, 180],
         "max_daily_feedings": 10,
         "pwm_frequency": 50,
+        "rotation_rounds": 1,
     },
     "dashboard": {
         "dashboard_host": "0.0.0.0",
@@ -119,12 +120,13 @@ def get_all_config() -> Dict[str, Any]:
 @dataclass
 class ServoConfig:
     """Servo hardware settings for MG90 Micro Servo feeder."""
-    pin: int = 18
+    pin: int = 12
     minimum_angle: int = 0
-    maximum_angle: int = 65
-    feed_angles: tuple = (0, 20, 35, 50, 65)
+    maximum_angle: int = 180
+    feed_angles: tuple = (0, 180, 180, 180, 180)
     max_daily_feedings: int = 10
     pwm_frequency: int = 50
+    rotation_rounds: int = 1
 
 
 # Static Model Paths (Fixed system structure)
@@ -194,12 +196,13 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
         angles = tuple(angles)
 
     SERVO = ServoConfig(
-        pin=int(srv.get("pin", 18)),
+        pin=int(srv.get("pin", 12)),
         minimum_angle=int(srv.get("minimum_angle", 0)),
-        maximum_angle=int(srv.get("maximum_angle", 65)),
+        maximum_angle=int(srv.get("maximum_angle", 180)),
         feed_angles=angles,
         max_daily_feedings=int(srv.get("max_daily_feedings", 10)),
         pwm_frequency=int(srv.get("pwm_frequency", 50)),
+        rotation_rounds=int(srv.get("rotation_rounds", 1)),
     )
 
 
