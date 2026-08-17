@@ -13,6 +13,7 @@ Counter-Clockwise (CCW) rotation back to 0° baseline to dispense food.
 Features safety limits, manual override, daily feeding counters, and graceful fallback when offline.
 """
 
+from datetime import date
 from typing import Optional, Dict, Any
 from config import SERVO, ServoConfig
 from utils.logger import get_logger
@@ -28,6 +29,7 @@ class FeederServo:
         self.manual_override_angle: Optional[int] = None
         self.calibration_offset: int = 0
         self.daily_feed_count: int = 0
+        self.last_feed_date: date = date.today()
         self._gpio_pwm = None
 
     def set_calibration_offset(self, offset_degrees: int) -> None:
@@ -67,6 +69,12 @@ class FeederServo:
         Returns status dictionary:
         {"angle": int, "rounds": int, "dispensed": bool, "daily_count": int}
         """
+        # Auto-reset daily feeding counter at midnight
+        today = date.today()
+        if self.last_feed_date < today:
+            self.daily_feed_count = 0
+            self.last_feed_date = today
+
         if self.daily_feed_count >= self.config.max_daily_feedings:
             LOG.warning("Maximum daily feeding limit reached (%d)", self.config.max_daily_feedings)
             return {
@@ -113,6 +121,7 @@ class FeederServo:
         
         Performs full CW rotation (0° to target angle, default 180°) and 
         CCW rotation back to 0° for the specified number of rounds (1 round per hungry fish).
+        Sets zero duty-cycle before stopping to prevent analog servo buzzing/jitter on 5V rail.
         """
         if rounds <= 0:
             return False
@@ -137,6 +146,10 @@ class FeederServo:
                 # Full Counter-Clockwise (CCW) rotation back to 0° baseline
                 pwm.ChangeDutyCycle(duty_home)
                 time.sleep(0.5)
+
+            # Eliminate PWM pulse holding jitter / continuous buzzing
+            pwm.ChangeDutyCycle(0)
+            time.sleep(0.1)
 
             pwm.stop()
             GPIO.cleanup(self.config.pin)

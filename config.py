@@ -27,9 +27,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "top_camera_index": 1,
     },
     "sensor_config": {
-        "arduino_serial_port": "/dev/ttyAMA0",
+        "arduino_serial_port": "/dev/ttyUSB1",
         "arduino_baudrate": 9600,
-        "ionconcentration_serial_port": "/dev/ttyUSB1",
+        "ionconcentration_serial_port": "/dev/ttyUSB0",
         "ionconcentration_baudrate": 9600,
         "ionconcentration_bytesize": 8,
         "ionconcentration_parity": "N",
@@ -133,6 +133,7 @@ class ServoConfig:
 FISH_MODEL_ONNX_PATH = MODELS_DIR / "vision" / "fish_detector_yolov8.onnx"
 DISEASE_MODEL_ONNX_PATH = MODELS_DIR / "disease" / "fish_disease_model.onnx"
 DISEASE_CLASSES_PATH = MODELS_DIR / "disease" / "class_names.json"
+FEEDING_MODEL_ONNX_PATH = MODELS_DIR / "feeding" / "model.onnx"
 WATER_QUALITY_MODEL_DIR = MODELS_DIR / "water_quality"
 FIREBASE_CREDENTIALS_PATH = BASE_DIR / "firebase_credentials.json"
 

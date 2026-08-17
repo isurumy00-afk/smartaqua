@@ -5,6 +5,7 @@ and cloud synchronization sequentially in a simple, clean, linear loop.
 Prints clear real-time progress to the terminal and saves all state to JSON.
 """
 
+import os
 import math
 import time
 from datetime import datetime, timezone
@@ -195,6 +196,56 @@ def _draw_analysis_overlay(frame, tracks, stress_data, remaining_secs, behavior,
     return vis
 
 
+def _draw_hunger_overlay(
+    frame: np.ndarray,
+    detections: List[Dict[str, Any]],
+    current_count: int,
+    avg_count: float,
+    presence_ratio: float,
+    remaining: float,
+    fps: float,
+) -> np.ndarray:
+    """Draw Top Camera feeding HUD with detected bounding boxes, stats, countdown timer, and FPS."""
+    vis = frame.copy()
+    fh, fw = vis.shape[:2]
+
+    # Draw detected fish bounding boxes in cyan/yellow
+    for det in detections:
+        bbox = det.get("bbox")
+        conf = det.get("confidence", 0.0)
+        if bbox and len(bbox) == 4:
+            x1, y1, x2, y2 = map(int, bbox)
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(fw - 1, x2), min(fh - 1, y2)
+            cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 255, 255), 2)
+            tag = f"Hungry Fish {int(conf * 100)}%"
+            cv2.putText(vis, tag, (x1, max(15, y1 - 6)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+
+    # Top HUD Banner with semi-transparent background
+    overlay = vis.copy()
+    cv2.rectangle(overlay, (0, 0), (fw, 65), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.75, vis, 0.25, 0, vis)
+
+    rem_m = int(remaining) // 60
+    rem_s = int(remaining) % 60
+    timer_str = f"{rem_m:02d}:{rem_s:02d}"
+
+    # Line 1: Title & Timer & FPS
+    cv2.putText(vis, "Step 3: Top Camera Hunger Monitoring (3 min)", (10, 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(vis, f"Remaining: {timer_str} | {fps:.1f} FPS", (fw - 230, 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+
+    # Line 2: Real-Time Stats
+    stats_str = f"Instant: {current_count} fish | 3-Min Avg: {avg_count:.2f} fish | Surface Attendance: {presence_ratio * 100:.1f}%"
+    status_color = (0, 255, 0) if presence_ratio >= 0.30 and avg_count >= 0.5 else (200, 200, 200)
+    cv2.putText(vis, stats_str, (10, 48),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, status_color, 1, cv2.LINE_AA)
+
+    return vis
+
+
 def stage_sensors_and_stress():
     """Stage 1: Read sensors, then run a 3-minute visual stress observation with live video at 30 FPS."""
     print("\n[1/5] Reading Sensors & Starting 3-Minute Visual Stress Analysis...")
@@ -241,6 +292,8 @@ def stage_sensors_and_stress():
     TARGET_FRAME_TIME = 1.0 / TARGET_FPS  # 33.3 ms per frame
     WINDOW_NAME = "AquaMonitor - Step 1: Live Stress Analysis (3 min @ 30 FPS)"
 
+    can_display = os.environ.get("HEADLESS") != "1" and (os.name == "nt" or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")))
+
     start_time = time.time()
     last_stress_update = 0.0
     running_stress = {"tank_stress_score": 0.0, "tank_stress_level": "Healthy"}
@@ -284,20 +337,26 @@ def stage_sensors_and_stress():
                 running_stress = classify_stress(behavior_metrics, sensor_readings)
                 last_stress_update = elapsed
 
-            # Draw annotated frame and display
-            vis_frame = _draw_analysis_overlay(
-                frame, tracks, running_stress, remaining, behavior_metrics, current_fps, dt=max(0.01, actual_dt)
-            )
-            cv2.imshow(WINDOW_NAME, vis_frame)
-
             # Dynamic 30 FPS loop timing control
             proc_duration = time.time() - frame_start
             wait_ms = max(1, int((TARGET_FRAME_TIME - proc_duration) * 1000))
 
-            key = cv2.waitKey(wait_ms) & 0xFF
-            if key == ord('q'):
-                print("  |-- Observation terminated early by user.")
-                break
+            # Draw annotated frame and display if graphical desktop is available
+            if can_display:
+                try:
+                    vis_frame = _draw_analysis_overlay(
+                        frame, tracks, running_stress, remaining, behavior_metrics, current_fps, dt=max(0.01, actual_dt)
+                    )
+                    cv2.imshow(WINDOW_NAME, vis_frame)
+                    key = cv2.waitKey(wait_ms) & 0xFF
+                    if key == ord('q'):
+                        print("  |-- Observation terminated early by user.")
+                        break
+                except Exception:
+                    can_display = False
+                    time.sleep(wait_ms / 1000.0)
+            else:
+                time.sleep(wait_ms / 1000.0)
 
             # Compute smoothed moving average FPS
             actual_dt = time.time() - last_frame_time
@@ -308,10 +367,11 @@ def stage_sensors_and_stress():
     except Exception as exc:
         LOG.warning("Visual observation loop error (continuing with accumulated data): %s", exc)
     finally:
-        try:
-            cv2.destroyWindow(WINDOW_NAME)
-        except Exception:
-            pass
+        if can_display:
+            try:
+                cv2.destroyWindow(WINDOW_NAME)
+            except Exception:
+                pass
 
     # ── 3. Final stress classification on fully-accumulated behavior data ──
     stress_results = classify_stress(behavior_metrics, sensor_readings)
@@ -343,18 +403,151 @@ def stage_disease():
 
 
 def stage_hunger_and_feeding():
-    """Stage 3: Top view hunger detection & automatic feeding."""
-    print("\n[3/5] Top Camera Hunger Detection & Servo Control...")
-    frame = TOP_CAMERA.read()
-    hunger_result = detect_hunger(frame)
-    save_json(DATA_DIR / "latest_hunger.json", hunger_result)
+    """Stage 3: Top view 3-minute continuous hunger monitoring, temporal averaging & automatic feeding."""
+    print("\n[3/5] Top Camera Hunger Observation (3 min continuous monitoring)...")
 
-    hungry_count = hunger_result.get("hungry_count", 0)
-    feed_result = FEEDER_SERVO.dispense(hungry_count)
+    HUNGER_OBSERVATION_DURATION = 180  # 3 minutes
+    TARGET_FPS = 30.0
+    TARGET_FRAME_TIME = 1.0 / TARGET_FPS
+    WINDOW_NAME = "AquaMonitor - Step 3: Top Camera Hunger Monitoring (3 min @ 30 FPS)"
+
+    can_display = os.environ.get("HEADLESS") != "1" and (os.name == "nt" or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")))
+
+    start_time = time.time()
+    sample_counts: List[int] = []
+    sample_confidences: List[float] = []
+    latest_detections: List[Dict[str, Any]] = []
+    frame_count = 0
+    current_fps = 30.0
+    last_frame_time = time.time()
+    actual_dt = 0.667
+
+    print("  |-- Monitoring Top Camera for 3 minutes to evaluate sustained hunger (press 'q' to skip)...")
+
+    try:
+        while True:
+            frame_start = time.time()
+            elapsed = frame_start - start_time
+            remaining = max(0.0, HUNGER_OBSERVATION_DURATION - elapsed)
+
+            if elapsed >= HUNGER_OBSERVATION_DURATION:
+                break
+
+            frame = TOP_CAMERA.read()
+            if frame is None:
+                frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(frame, "TOP CAMERA FEED UNAVAILABLE", (130, 240),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+            frame_count += 1
+
+            # Run Top Camera YOLOv8 hunger detection
+            latest_hunger_result = detect_hunger(frame)
+            current_count = latest_hunger_result.get("hungry_count", 0)
+            conf = latest_hunger_result.get("confidence", 0.0)
+            latest_detections = latest_hunger_result.get("detections", [])
+
+            sample_counts.append(current_count)
+            if conf > 0:
+                sample_confidences.append(conf)
+
+            # Compute running stats
+            running_avg = float(np.mean(sample_counts)) if sample_counts else 0.0
+            presence_frames = sum(1 for c in sample_counts if c > 0)
+            presence_ratio = (presence_frames / len(sample_counts)) if sample_counts else 0.0
+
+            # Dynamic 30 FPS loop timing control
+            proc_duration = time.time() - frame_start
+            wait_ms = max(1, int((TARGET_FRAME_TIME - proc_duration) * 1000))
+
+            if can_display:
+                try:
+                    vis_frame = _draw_hunger_overlay(
+                        frame,
+                        latest_detections,
+                        current_count,
+                        running_avg,
+                        presence_ratio,
+                        remaining,
+                        current_fps,
+                    )
+                    cv2.imshow(WINDOW_NAME, vis_frame)
+                    key = cv2.waitKey(wait_ms) & 0xFF
+                    if key == ord('q'):
+                        print("  |-- Hunger observation finalized early by user.")
+                        break
+                except Exception:
+                    can_display = False
+                    time.sleep(wait_ms / 1000.0)
+            else:
+                time.sleep(wait_ms / 1000.0)
+
+            actual_dt = time.time() - last_frame_time
+            last_frame_time = time.time()
+            if actual_dt > 0:
+                current_fps = 0.9 * current_fps + 0.1 * (1.0 / actual_dt)
+
+    except Exception as exc:
+        LOG.warning("Top Camera hunger observation loop error: %s", exc)
+    finally:
+        if can_display:
+            try:
+                cv2.destroyWindow(WINDOW_NAME)
+            except Exception:
+                pass
+
+    # ── 2. Calculate 3-minute Temporal Average & True Hunger Classification ──
+    total_samples = len(sample_counts)
+    if total_samples > 0:
+        avg_hungry_count = float(np.mean(sample_counts))
+        presence_frames = sum(1 for c in sample_counts if c > 0)
+        presence_ratio = round(presence_frames / total_samples, 3)
+        mean_confidence = round(float(np.mean(sample_confidences)), 3) if sample_confidences else 0.0
+    else:
+        avg_hungry_count = 0.0
+        presence_ratio = 0.0
+        mean_confidence = 0.0
+
+    # Sustained surface attendance criteria:
+    # Fish must be present at the top feeding zone for at least 30% of the 3-minute observation
+    # with an average count of at least 0.5 fish to confirm genuine hunger.
+    is_truly_hungry = (presence_ratio >= 0.30) and (avg_hungry_count >= 0.5)
+
+    if is_truly_hungry:
+        final_hungry_count = max(1, min(4, int(round(avg_hungry_count))))
+        hunger_level = (
+            "Low" if final_hungry_count == 1
+            else ("Moderate" if final_hungry_count == 2
+                  else "High")
+        )
+    else:
+        final_hungry_count = 0
+        hunger_level = "Normal"
+
+    observation_secs = round(time.time() - start_time, 1)
+
+    # Compile 3-minute temporal hunger report
+    hunger_summary = {
+        "hungry_count": final_hungry_count,
+        "average_count": round(avg_hungry_count, 2),
+        "presence_ratio": presence_ratio,
+        "is_truly_hungry": is_truly_hungry,
+        "hunger_level": hunger_level,
+        "confidence": mean_confidence,
+        "observation_duration_seconds": observation_secs,
+        "frames_analyzed": total_samples,
+        "source": "top_cam_yolov8_temporal_average",
+    }
+    save_json(DATA_DIR / "latest_hunger.json", hunger_summary)
+
+    # ── 3. Feeder Servo Dispense ──
+    feed_result = FEEDER_SERVO.dispense(final_hungry_count)
     save_json(DATA_DIR / "latest_feed.json", feed_result)
 
-    print(f"  |-- Hungry Fish Count: {hungry_count} ({hunger_result.get('hunger_level', 'Normal')})")
-    print(f"  +-- Dispensed Portion: {feed_result.get('dispensed', False)}")
+    print(f"  |-- Observation Complete: {observation_secs}s ({total_samples} frames sampled)")
+    print(f"  |-- Avg Surface Fish: {avg_hungry_count:.2f} | Surface Attendance: {presence_ratio * 100:.1f}%")
+    print(f"  |-- Hunger Status: {'CONFIRMED HUNGRY' if is_truly_hungry else 'NOT HUNGRY (Transient/Normal)'} (Count: {final_hungry_count}, Level: {hunger_level})")
+    print(f"  +-- Dispensed Portion: {feed_result.get('dispensed', False)} (Rounds: {feed_result.get('rounds', 0)})")
 
 
 def stage_water_quality_and_shap():

@@ -18,7 +18,7 @@ class IonConcentrationReader:
     """Modbus serial client reader for water ion concentration sensor."""
 
     def __init__(self, port: Optional[str] = None):
-        self.port = port or SENSOR_CONFIG.get("ionconcentration_serial_port", "/dev/ttyUSB1")
+        self.port = port or SENSOR_CONFIG.get("ionconcentration_serial_port", "/dev/ttyUSB0")
         self.baudrate = SENSOR_CONFIG.get("ionconcentration_baudrate", 9600)
         self.bytesize = SENSOR_CONFIG.get("ionconcentration_bytesize", 8)
         self.parity = SENSOR_CONFIG.get("ionconcentration_parity", "N")
@@ -106,7 +106,7 @@ def read() -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    port = SENSOR_CONFIG.get("ionconcentration_serial_port", "/dev/ttyUSB1")
+    port = SENSOR_CONFIG.get("ionconcentration_serial_port", "/dev/ttyUSB0")
     baudrate = SENSOR_CONFIG.get("ionconcentration_baudrate", 9600)
     bytesize = SENSOR_CONFIG.get("ionconcentration_bytesize", 8)
     parity = SENSOR_CONFIG.get("ionconcentration_parity", "N")

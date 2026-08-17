@@ -75,7 +75,9 @@ def create_directories():
         LOG_DIR,
         MODELS_DIR / "vision",
         MODELS_DIR / "disease",
+        MODELS_DIR / "feeding",
         MODELS_DIR / "water_quality",
+        MODELS_DIR / "NLP",
     ]
     for directory in dirs:
         try:
@@ -96,7 +98,6 @@ def install_apt_packages(dry_run: bool = False):
         "python3-dev",
         "python3-venv",
         "python3-opencv",
-        "libatlas-base-dev",
         "libgfortran5",
         "libopenblas-dev",
         "gpiod",
@@ -125,6 +126,18 @@ def check_in_venv():
     return sys.prefix != sys.base_prefix
 
 
+def get_target_python() -> str:
+    """Get the path to the virtual environment's Python executable if present."""
+    if os.name == "nt":
+        venv_py = BASE_DIR / "venv" / "Scripts" / "python.exe"
+    else:
+        venv_py = BASE_DIR / "venv" / "bin" / "python"
+
+    if venv_py.exists():
+        return str(venv_py)
+    return sys.executable
+
+
 def setup_venv(dry_run: bool = False):
     """Ensure a virtual environment exists or is created."""
     venv_dir = BASE_DIR / "venv"
@@ -151,14 +164,15 @@ def setup_venv(dry_run: bool = False):
 
 
 def install_python_dependencies(dry_run: bool = False):
-    """Install Python packages from requirements.txt."""
+    """Install Python packages from requirements.txt into the active or target venv."""
     if not REQUIREMENTS_FILE.exists():
         log_error(f"Requirements file not found at {REQUIREMENTS_FILE}")
         return
 
-    log_info("Installing Python dependencies from requirements.txt...")
-    pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"]
-    req_cmd = [sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)]
+    target_py = get_target_python()
+    log_info(f"Installing Python dependencies using {target_py} from requirements.txt...")
+    pip_cmd = [target_py, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"]
+    req_cmd = [target_py, "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)]
 
     if dry_run:
         log_info(f"[Dry Run] Would execute: {' '.join(pip_cmd)}")

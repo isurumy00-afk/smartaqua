@@ -279,3 +279,12 @@
 2026-08-14T23:06:01+0530 [INFO] [ml.water_quality_predictor] Loaded Water Quality Model (best_water_quality_model.keras, type=keras, threshold=0.50)
 2026-08-15T11:21:51+0530 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB1: No module named 'pymodbus'
 2026-08-15T11:23:15+0530 [INFO] [ml.water_quality_predictor] Loaded Water Quality Model (best_water_quality_model.keras, type=keras, threshold=0.50)
+2026-08-17T00:54:44-0700 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB0: No module named 'pymodbus'
+2026-08-17T01:12:33-0700 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB0: No module named 'pymodbus'
+2026-08-17T01:15:02-0700 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB0: No module named 'pymodbus'
+2026-08-17T01:26:18-0700 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB0: No module named 'pymodbus'
+2026-08-17T01:30:01-0700 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB0: No module named 'pymodbus'
+2026-08-17T10:27:41-0700 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB0: No module named 'pymodbus'
+2026-08-17T10:27:47-0700 [WARNING] [vision.hunger_detector] Failed to load Top Camera YOLOv8 feeding model: No module named 'onnxruntime'
+2026-08-17T10:27:47-0700 [WARNING] [vision.hunger_detector] Hunger contour fallback evaluation failed: No module named 'cv2'
+2026-08-17T10:33:30-0700 [WARNING] [sensors.ionconcentration_reader] Ion concentration sensor read failed on /dev/ttyUSB0: No module named 'pymodbus'

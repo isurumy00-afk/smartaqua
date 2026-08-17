@@ -172,7 +172,16 @@ class FishTracker:
         dt: float,
         max_dist: float = 80.0,
     ) -> List[Dict[str, Any]]:
-        """Assign persistent IDs to detections using nearest-centroid matching."""
+        """Assign persistent IDs to detections using nearest-centroid matching with TTL eviction."""
+        now = time.time()
+
+        # Prune stale fish tracks inactive for > 60 seconds (prevents 24/7 memory leak)
+        stale_cutoff = now - 60.0
+        self.fish_states = {
+            fid: s for fid, s in self.fish_states.items()
+            if s.get("last_seen", now) >= stale_cutoff
+        }
+
         new_centers = [(float((b[0] + b[2]) / 2), float((b[1] + b[3]) / 2)) for b in xyxy]
         prev_ids = list(self.fish_states.keys())
 
@@ -207,9 +216,11 @@ class FishTracker:
             state = self.fish_states.setdefault(fid, {
                 "trajectory": [],
                 "last_center": None,
+                "last_seen": now,
             })
 
             state["last_center"] = (cx, cy)
+            state["last_seen"] = now
             state["trajectory"].append([cx, cy])
             if len(state["trajectory"]) > 30:
                 state["trajectory"].pop(0)

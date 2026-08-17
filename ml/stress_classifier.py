@@ -25,7 +25,7 @@ Healthy ranges used for sensor scoring:
 - EC:  100 – 500 μS/cm (saturates at 100 below / 300 above boundary)
 """
 
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 from utils.logger import get_logger
 
@@ -157,6 +157,19 @@ def _level_label(score: float) -> str:
     return "High Stress"
 
 
+def _extract_sensor_val(raw: Any) -> Optional[float]:
+    """Safely extract numerical sensor reading from dictionary telemetry or scalar value."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        val = raw.get("value")
+        return float(val) if val is not None else None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def classify(behavior_data: Dict[str, Any], sensor_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """Wrapper function returning standard dictionary format for system JSON persistence.
 
@@ -202,8 +215,8 @@ def classify(behavior_data: Dict[str, Any], sensor_data: Dict[str, Any] = None) 
 
     # ── Sensor stress components ──
     sd = sensor_data or {}
-    ph_val  = sd.get("ph",             {}).get("value")
-    ec_val  = sd.get("ionconcentration", {}).get("value")
+    ph_val = _extract_sensor_val(sd.get("ph"))
+    ec_val = _extract_sensor_val(sd.get("ionconcentration"))
 
     ph_score = score_ph(ph_val)
     ec_score = score_ec(ec_val)

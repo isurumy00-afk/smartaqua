@@ -86,8 +86,8 @@ smart_aquarium/
 │
 ├── utils/
 │   ├── logger.py                   # Structured logger writing to logs/system.log
-│   ├── scheduler.py                # Periodic task execution scheduler helper
-│   └── firebase.py                 # Firebase SDK initialization bridge
+│   ├── firebase.py                 # Firebase SDK initialization bridge
+│   └── export_onnx.py              # ONNX model export utility
 │
 ├── storage/
 │   └── json_store.py               # Thread-safe atomic JSON persistence helper

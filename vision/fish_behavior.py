@@ -38,15 +38,23 @@ class BehaviorAnalyzer:
             "top_visit_intervals": [],
             "immobility_events": 0,
             "current_immobile_seconds": 0.0,
+            "last_seen": 0.0,
         }
 
     def analyze(self, tracks: List[Dict[str, Any]], frame_height: int = 480, dt: float = 1.0) -> Dict[str, Any]:
-        """Analyze frame tracking results and update continuous metrics.
-        
-        Returns aggregated tank and per-fish behavioral metrics.
-        """
+        """Analyze frame tracking results and update continuous metrics with TTL eviction."""
         top_line = int(frame_height * TOP_REGION_PERCENT)
         bottom_line = int(frame_height * (1.0 - BOTTOM_REGION_PERCENT))
+
+        import time
+        now = time.time()
+
+        # Prune stale fish metrics inactive for > 60 seconds (prevents 24/7 memory leak)
+        stale_cutoff = now - 60.0
+        self.history = {
+            fid: s for fid, s in self.history.items()
+            if s.get("last_seen", now) >= stale_cutoff
+        }
 
         if not tracks:
             return {
@@ -73,6 +81,7 @@ class BehaviorAnalyzer:
 
             state = self.history.setdefault(tid, self._make_fish_state())
             state["tracked_seconds"] += dt
+            state["last_seen"] = now
 
             # ── Freezing / Immobility Tracking ──
             if state["last_pos"] is not None:

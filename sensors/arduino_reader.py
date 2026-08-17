@@ -29,38 +29,78 @@ from utils.logger import get_logger
 
 LOG = get_logger(__name__)
 
-# Module-level cache with lock — safe for concurrent access from ThreadPoolExecutor
+# Module-level cache and persistent serial connection with lock
 _lock = threading.Lock()
 _cached_payload: Dict[str, Any] = {}
 _last_read_time: float = 0.0
-_CACHE_TTL = 1.5  # seconds
+_CACHE_TTL = 2.0  # seconds
+_ser = None
+
+
+def _get_serial_connection(port: str, baudrate: int):
+    """Obtain or reconnect to persistent Serial port without continuous resetting."""
+    global _ser
+    if _ser is not None:
+        try:
+            if _ser.is_open:
+                return _ser
+        except Exception:
+            _ser = None
+
+    try:
+        import serial
+        _ser = serial.Serial(
+            port=port,
+            baudrate=baudrate,
+            timeout=2.0,
+            dsrdtr=False,
+            rtscts=False,
+        )
+        _ser.reset_input_buffer()
+        return _ser
+    except Exception as exc:
+        LOG.debug("Arduino serial connection error on %s: %s", port, exc)
+        _ser = None
+        return None
 
 
 def _read_serial_once() -> Dict[str, Any]:
-    """Open Serial port, read one complete JSON line from the Arduino Uno.
-
-    reset_input_buffer() is called immediately after opening the port to
-    discard any partial line that arrived before the port was opened — e.g.
-    if the port opened mid-cycle while the Arduino was halfway through its
-    Serial.print() sequence. After flushing, readline() waits cleanly for the
-    next complete \r\n-terminated packet.
-
-    Returns parsed dict on success, empty dict on any error.
-    """
-    port = SENSOR_CONFIG.get("arduino_serial_port", "/dev/ttyAMA0")
+    """Read one complete JSON telemetry line from the Arduino Uno via persistent serial."""
+    global _ser
+    port = SENSOR_CONFIG.get("arduino_serial_port", "/dev/ttyUSB1")
     baudrate = SENSOR_CONFIG.get("arduino_baudrate", 9600)
     try:
-        import serial
-        with serial.Serial(port, baudrate, timeout=2.0) as ser:
-            ser.reset_input_buffer()          # Discard stale / partial line
-            line = ser.readline()             # Block until \n — always a full packet
-            line = line.decode("utf-8", errors="ignore").strip()
-            if line.startswith("{") and line.endswith("}"):
-                return json.loads(line)
+        ser = _get_serial_connection(port, baudrate)
+        if ser is None or not ser.is_open:
+            return {}
+
+        line = ser.readline()
+        line = line.decode("utf-8", errors="ignore").strip()
+        if line.startswith("{") and line.endswith("}"):
+            return json.loads(line)
+        if line:
             LOG.debug("Arduino: unexpected line format: %r", line)
     except Exception as exc:
         LOG.debug("Arduino serial read error on %s: %s", port, exc)
+        if _ser is not None:
+            try:
+                _ser.close()
+            except Exception:
+                pass
+            _ser = None
     return {}
+
+
+def close() -> None:
+    """Close the persistent serial connection."""
+    global _ser
+    with _lock:
+        if _ser is not None:
+            try:
+                _ser.close()
+            except Exception:
+                pass
+            _ser = None
 
 
 def _get_payload() -> Dict[str, Any]:

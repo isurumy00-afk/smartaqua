@@ -4,9 +4,9 @@
     "top_camera_index": 1
   },
   "sensor_config": {
-    "arduino_serial_port": "/dev/ttyAMA0",
+    "arduino_serial_port": "/dev/ttyUSB1",
     "arduino_baudrate": 9600,
-    "ionconcentration_serial_port": "/dev/ttyUSB1",
+    "ionconcentration_serial_port": "/dev/ttyUSB0",
     "ionconcentration_baudrate": 9600,
     "ionconcentration_bytesize": 8,
     "ionconcentration_parity": "N",

@@ -30,6 +30,7 @@ try:
         FISH_MODEL_ONNX_PATH,
         DISEASE_MODEL_ONNX_PATH,
         DISEASE_CLASSES_PATH,
+        FEEDING_MODEL_ONNX_PATH,
         WATER_QUALITY_MODEL_DIR,
         SENSOR_CONFIG,
         FIREBASE_CREDENTIALS_PATH,
@@ -178,6 +179,12 @@ def check_directories_and_artifacts():
     else:
         reporter.add_result(cat, "Disease Classifier Model (ONNX)", "WARN", f"Missing at {DISEASE_MODEL_ONNX_PATH.relative_to(BASE_DIR)} — run utils/export_onnx.py to generate")
 
+    # Top Camera Feeding YOLOv8 Model (ONNX)
+    if FEEDING_MODEL_ONNX_PATH.exists():
+        reporter.add_result(cat, "Top Camera Feeding Model (ONNX)", "PASS", f"Found ({FEEDING_MODEL_ONNX_PATH.stat().st_size} bytes)")
+    else:
+        reporter.add_result(cat, "Top Camera Feeding Model (ONNX)", "WARN", f"Missing at {FEEDING_MODEL_ONNX_PATH.relative_to(BASE_DIR)}")
+
     if DISEASE_CLASSES_PATH.exists():
         reporter.add_result(cat, "Disease Class Labels", "PASS", f"Found at {DISEASE_CLASSES_PATH.relative_to(BASE_DIR)}")
     else:
@@ -225,15 +232,15 @@ def check_hardware_interfaces():
     except Exception as exc:
         reporter.add_result(cat, "OpenCV Camera Drivers", "WARN", f"OpenCV check failed: {exc}")
 
-    # Arduino Uno UART Serial Port (Temperature, pH, Turbidity)
-    ard_port = Path(SENSOR_CONFIG.get("arduino_serial_port", "/dev/ttyAMA0"))
+    # Arduino Uno USB Serial Port (Temperature, pH, Turbidity)
+    ard_port = Path(SENSOR_CONFIG.get("arduino_serial_port", "/dev/ttyUSB1"))
     if ard_port.exists() or os.name == "nt":
-        reporter.add_result(cat, "Arduino Uno UART Serial Port", "PASS", f"Port interface available ({ard_port})")
+        reporter.add_result(cat, "Arduino Uno USB Serial Port", "PASS", f"Port interface available ({ard_port})")
     else:
-        reporter.add_result(cat, "Arduino Uno UART Serial Port", "WARN", f"UART port {ard_port} not attached")
+        reporter.add_result(cat, "Arduino Uno USB Serial Port", "WARN", f"USB Serial port {ard_port} not attached")
 
     # Ion Concentration Serial Port
-    ion_port = Path(SENSOR_CONFIG.get("ionconcentration_serial_port", "/dev/ttyUSB1"))
+    ion_port = Path(SENSOR_CONFIG.get("ionconcentration_serial_port", "/dev/ttyUSB0"))
     if ion_port.exists() or os.name == "nt":
         reporter.add_result(cat, "Ion Concentration Modbus Serial Port", "PASS", f"Port interface available ({ion_port})")
     else:
@@ -252,7 +259,6 @@ def check_core_modules():
 
     modules_to_test = [
         ("utils.logger", "Logger Utility"),
-        ("utils.scheduler", "Task Scheduler Utility"),
         ("utils.firebase", "Firebase Bridge Utility"),
         ("storage.json_store", "JSON Persistence Store"),
         ("health.watchdog", "System Watchdog Context Manager"),
@@ -298,7 +304,7 @@ def check_functional_contracts():
     # Test JSON Persistence Store
     try:
         from storage.json_store import save_json, load_json
-        test_file = "diag_test.json"
+        test_file = DATA_DIR / "diag_test.json"
         test_data = {"status": "ok", "test": True}
         save_json(test_file, test_data)
         read_back = load_json(test_file, {})
@@ -308,9 +314,8 @@ def check_functional_contracts():
             reporter.add_result(cat, "Atomic JSON Store", "FAIL", "Read data did not match written test data")
         
         # Cleanup test file
-        test_path = DATA_DIR / test_file
-        if test_path.exists():
-            test_path.unlink()
+        if test_file.exists():
+            test_file.unlink()
     except Exception as exc:
         reporter.add_result(cat, "Atomic JSON Store", "FAIL", f"JSON store error: {exc}")
 
