@@ -53,6 +53,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "max_tracked_fish": 4,
         "top_region_percent": 0.30,
         "bottom_region_percent": 0.25,
+        "send_stress_roi_to_disease": True,
+        "send_roi_to_disease": True,
     },
     "servo": {
         "pin": 12,
@@ -62,6 +64,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "max_daily_feedings": 10,
         "pwm_frequency": 50,
         "rotation_rounds": 1,
+        "post_feed_cooldown_minutes": 30,
     },
     "dashboard": {
         "dashboard_host": "0.0.0.0",
@@ -127,6 +130,7 @@ class ServoConfig:
     max_daily_feedings: int = 10
     pwm_frequency: int = 50
     rotation_rounds: int = 1
+    post_feed_cooldown_minutes: int = 30
 
 
 # Static Model Paths (Fixed system structure)
@@ -146,6 +150,8 @@ FISH_CONFIDENCE: float = 0.20
 MAX_TRACKED_FISH: int = 4
 TOP_REGION_PERCENT: float = 0.30
 BOTTOM_REGION_PERCENT: float = 0.25
+SEND_STRESS_ROI_TO_DISEASE: bool = True
+SEND_ROI_TO_DISEASE: bool = True
 TASK_INTERVALS: Dict[str, int] = {}
 SENSOR_CONFIG: Dict[str, Any] = {}
 
@@ -155,6 +161,7 @@ DASHBOARD_ENABLED: bool = True
 
 FIREBASE_DATABASE_URL: str = ""
 
+POST_FEED_COOLDOWN_MINUTES: int = 30
 SERVO: ServoConfig = ServoConfig()
 
 
@@ -163,9 +170,10 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
     global SIDE_CAMERA_INDEX, TOP_CAMERA_INDEX
     global FISH_CONFIDENCE, MAX_TRACKED_FISH
     global TOP_REGION_PERCENT, BOTTOM_REGION_PERCENT
+    global SEND_STRESS_ROI_TO_DISEASE, SEND_ROI_TO_DISEASE
     global TASK_INTERVALS, SENSOR_CONFIG
     global DASHBOARD_HOST, DASHBOARD_PORT, DASHBOARD_ENABLED
-    global FIREBASE_DATABASE_URL, SERVO
+    global FIREBASE_DATABASE_URL, POST_FEED_COOLDOWN_MINUTES, SERVO
 
     cams = cfg.get("cameras", {})
     SIDE_CAMERA_INDEX = int(cams.get("side_camera_index", 0))
@@ -176,6 +184,8 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
     MAX_TRACKED_FISH = int(vis.get("max_tracked_fish", 4))
     TOP_REGION_PERCENT = float(vis.get("top_region_percent", 0.30))
     BOTTOM_REGION_PERCENT = float(vis.get("bottom_region_percent", 0.25))
+    SEND_STRESS_ROI_TO_DISEASE = bool(vis.get("send_stress_roi_to_disease", vis.get("send_roi_to_disease", True)))
+    SEND_ROI_TO_DISEASE = SEND_STRESS_ROI_TO_DISEASE
 
     TASK_INTERVALS.clear()
     TASK_INTERVALS.update(cfg.get("task_intervals", {}))
@@ -196,6 +206,8 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
     if isinstance(angles, list):
         angles = tuple(angles)
 
+    POST_FEED_COOLDOWN_MINUTES = int(srv.get("post_feed_cooldown_minutes", 30))
+
     SERVO = ServoConfig(
         pin=int(srv.get("pin", 12)),
         minimum_angle=int(srv.get("minimum_angle", 0)),
@@ -204,6 +216,7 @@ def _apply_config_globals(cfg: Dict[str, Any]) -> None:
         max_daily_feedings=int(srv.get("max_daily_feedings", 10)),
         pwm_frequency=int(srv.get("pwm_frequency", 50)),
         rotation_rounds=int(srv.get("rotation_rounds", 1)),
+        post_feed_cooldown_minutes=POST_FEED_COOLDOWN_MINUTES,
     )
 
 

@@ -35,6 +35,7 @@ try:
         SENSOR_CONFIG,
         FIREBASE_CREDENTIALS_PATH,
         SERVO,
+        SEND_STRESS_ROI_TO_DISEASE,
     )
 except Exception as exc:
     print(f"[CRITICAL] Could not import config.py: {exc}")
@@ -124,10 +125,30 @@ def check_system_resources():
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     reporter.add_result(cat, "Python Version", "PASS", f"{py_ver} ({sys.executable})")
 
-    # Platform & Arch
+    # Platform & Arch & OS release
     arch = platform.machine()
     system = platform.system()
-    reporter.add_result(cat, "OS / Architecture", "PASS", f"{system} ({arch})")
+    os_detail = system
+    if Path("/etc/os-release").exists():
+        try:
+            for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
+                if line.startswith("PRETTY_NAME="):
+                    os_detail = line.split("=", 1)[1].strip('"\'')
+                    break
+        except Exception:
+            pass
+    reporter.add_result(cat, "OS / Distribution", "PASS", f"{os_detail} ({arch})")
+
+    # Hardware Model (Raspberry Pi 4B detection)
+    pi_model = "Generic Host / Dev Machine"
+    if Path("/proc/device-tree/model").exists():
+        try:
+            pi_model = Path("/proc/device-tree/model").read_text(encoding="utf-8").strip("\x00\n\r ")
+        except Exception:
+            pass
+    elif Path("/etc/rpi-issue").exists():
+        pi_model = "Raspberry Pi OS"
+    reporter.add_result(cat, "Hardware Platform", "PASS", pi_model)
 
     # RAM Availability
     try:
@@ -192,10 +213,12 @@ def check_directories_and_artifacts():
 
     # Water Quality Predictor Model
     rfr_path = WATER_QUALITY_MODEL_DIR / "rfr_model.pkl"
-    if rfr_path.exists():
-        reporter.add_result(cat, "Water Quality RFR Model", "PASS", f"Found at {rfr_path.relative_to(BASE_DIR)}")
+    keras_path = WATER_QUALITY_MODEL_DIR / "best_water_quality_model.keras"
+    if rfr_path.exists() or keras_path.exists():
+        model_found = rfr_path.name if rfr_path.exists() else keras_path.name
+        reporter.add_result(cat, "Water Quality ML Model", "PASS", f"Found {model_found}")
     else:
-        reporter.add_result(cat, "Water Quality RFR Model", "WARN", f"Missing at {rfr_path.relative_to(BASE_DIR)} (Rule-based fallback active)")
+        reporter.add_result(cat, "Water Quality ML Model", "WARN", "Missing model artifacts (Rule-based fallback active)")
 
     # Firebase Credentials
     if FIREBASE_CREDENTIALS_PATH.exists():
@@ -215,39 +238,75 @@ def check_hardware_interfaces():
     try:
         import cv2
         # Check Camera 1 (Side View)
-        cap1 = cv2.VideoCapture(SIDE_CAMERA_INDEX)
+        backend = cv2.CAP_V4L2 if os.name != "nt" else 0
+        cap1 = cv2.VideoCapture(SIDE_CAMERA_INDEX, backend) if backend else cv2.VideoCapture(SIDE_CAMERA_INDEX)
         if cap1.isOpened():
             reporter.add_result(cat, f"Camera 1 (Side View index={SIDE_CAMERA_INDEX})", "PASS", "Device opened successfully")
             cap1.release()
         else:
-            reporter.add_result(cat, f"Camera 1 (Side View index={SIDE_CAMERA_INDEX})", "WARN", "Video device index could not be opened (Fallback capture mode)")
+            reporter.add_result(cat, f"Camera 1 (Side View index={SIDE_CAMERA_INDEX})", "WARN", "Video device index could not be opened (Synthetic fallback active)")
         
         # Check Camera 2 (Top View)
-        cap2 = cv2.VideoCapture(TOP_CAMERA_INDEX)
+        cap2 = cv2.VideoCapture(TOP_CAMERA_INDEX, backend) if backend else cv2.VideoCapture(TOP_CAMERA_INDEX)
         if cap2.isOpened():
             reporter.add_result(cat, f"Camera 2 (Top View index={TOP_CAMERA_INDEX})", "PASS", "Device opened successfully")
             cap2.release()
         else:
-            reporter.add_result(cat, f"Camera 2 (Top View index={TOP_CAMERA_INDEX})", "WARN", "Video device index could not be opened (Fallback capture mode)")
+            reporter.add_result(cat, f"Camera 2 (Top View index={TOP_CAMERA_INDEX})", "WARN", "Video device index could not be opened (Synthetic fallback active)")
     except Exception as exc:
         reporter.add_result(cat, "OpenCV Camera Drivers", "WARN", f"OpenCV check failed: {exc}")
 
     # Arduino Uno USB Serial Port (Temperature, pH, Turbidity)
-    ard_port = Path(SENSOR_CONFIG.get("arduino_serial_port", "/dev/ttyUSB1"))
-    if ard_port.exists() or os.name == "nt":
-        reporter.add_result(cat, "Arduino Uno USB Serial Port", "PASS", f"Port interface available ({ard_port})")
+    ard_configured = SENSOR_CONFIG.get("arduino_serial_port", "/dev/ttyUSB1")
+    ard_candidates = [ard_configured, "/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyUSB1", "/dev/ttyUSB0"]
+    ard_found = None
+    if os.name == "nt":
+        ard_found = ard_configured
     else:
-        reporter.add_result(cat, "Arduino Uno USB Serial Port", "WARN", f"USB Serial port {ard_port} not attached")
+        for p in ard_candidates:
+            if Path(p).exists():
+                ard_found = p
+                break
+
+    if ard_found:
+        reporter.add_result(cat, "Arduino Uno USB Serial Port", "PASS", f"Port interface available ({ard_found})")
+    else:
+        reporter.add_result(cat, "Arduino Uno USB Serial Port", "WARN", f"Serial port ({ard_configured} or /dev/ttyACM*) not attached")
 
     # Ion Concentration Serial Port
-    ion_port = Path(SENSOR_CONFIG.get("ionconcentration_serial_port", "/dev/ttyUSB0"))
-    if ion_port.exists() or os.name == "nt":
-        reporter.add_result(cat, "Ion Concentration Modbus Serial Port", "PASS", f"Port interface available ({ion_port})")
+    ion_configured = SENSOR_CONFIG.get("ionconcentration_serial_port", "/dev/ttyUSB0")
+    ion_candidates = [ion_configured, "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0", "/dev/ttyACM1"]
+    ion_found = None
+    if os.name == "nt":
+        ion_found = ion_configured
     else:
-        reporter.add_result(cat, "Ion Concentration Modbus Serial Port", "WARN", f"Serial port {ion_port} not attached")
+        for p in ion_candidates:
+            if Path(p).exists():
+                ion_found = p
+                break
 
-    # Feeder Servo Pin
-    reporter.add_result(cat, "MG90 Feeder Servo", "PASS", f"Configured on GPIO Pin {SERVO.pin} (Freq={SERVO.pwm_frequency}Hz)")
+    if ion_found:
+        reporter.add_result(cat, "Ion Concentration Modbus Serial Port", "PASS", f"Port interface available ({ion_found})")
+    else:
+        reporter.add_result(cat, "Ion Concentration Modbus Serial Port", "WARN", f"Serial port ({ion_configured}) not attached")
+
+    # Feeder Servo Pin & GPIO Library Driver
+    gpio_driver = "Mock/Emulated"
+    try:
+        import rpi_lgpio
+        gpio_driver = "rpi-lgpio (Debian 13 Native)"
+    except ImportError:
+        try:
+            import gpiozero
+            gpio_driver = "gpiozero (Debian 13 Native)"
+        except ImportError:
+            try:
+                import RPi.GPIO
+                gpio_driver = "RPi.GPIO"
+            except ImportError:
+                pass
+
+    reporter.add_result(cat, "MG90 Feeder Servo", "PASS", f"Pin {SERVO.pin} ({SERVO.pwm_frequency}Hz) | Driver: {gpio_driver}")
 
 
 # ------------------------------------------------------------------------------
@@ -377,6 +436,22 @@ def check_functional_contracts():
         reporter.add_result(cat, "Feeder Servo Logic", "PASS", f"Hungry count 2 -> Rounds {feed_res.get('rounds')} (Full CW/CCW {feed_res.get('angle')}°)")
     except Exception as exc:
         reporter.add_result(cat, "Feeder Servo Logic", "FAIL", f"Feeder Servo error: {exc}")
+
+    # Test Disease Detector ROI Configuration & Inference
+    try:
+        import numpy as np
+        from vision.disease_detector import DiseaseDetector
+        dd = DiseaseDetector()
+        mock_frame = np.zeros((224, 224, 3), dtype=np.uint8)
+        mock_tracks = [{"fish_id": 1, "bbox": [10, 10, 100, 100], "confidence": 0.9}]
+        res_roi = dd.detect(mock_frame, tracks=mock_tracks, use_roi=True)
+        res_full = dd.detect(mock_frame, tracks=mock_tracks, use_roi=False)
+        reporter.add_result(
+            cat, "Disease Detector ROI Contract", "PASS",
+            f"Config SEND_STRESS_ROI_TO_DISEASE={SEND_STRESS_ROI_TO_DISEASE} | ROI mode={res_roi.get('disease_class')} | Full mode={res_full.get('disease_class')}"
+        )
+    except Exception as exc:
+        reporter.add_result(cat, "Disease Detector ROI Contract", "FAIL", f"Disease Detector error: {exc}")
 
     # Test NLP Symptom Parser & Fusion with CV Detection
     try:

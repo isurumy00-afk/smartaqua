@@ -102,6 +102,10 @@ def install_apt_packages(dry_run: bool = False):
         "libopenblas-dev",
         "gpiod",
         "i2c-tools",
+        "swig",
+        "liblgpio-dev",
+        "python3-lgpio",
+        "python3-rpi-lgpio",
     ]
 
     log_info("Updating apt package index and installing system dependencies...")
@@ -115,7 +119,15 @@ def install_apt_packages(dry_run: bool = False):
 
     try:
         subprocess.run(cmd_update, check=True)
-        subprocess.run(cmd_install, check=True)
+        # Attempt installation of all packages; if some optional Pi packages aren't in repo, install core
+        res = subprocess.run(cmd_install)
+        if res.returncode != 0:
+            log_warn("Retrying with essential packages only...")
+            fallback_packages = [
+                "python3-pip", "python3-dev", "python3-venv", "python3-opencv",
+                "libgfortran5", "libopenblas-dev", "gpiod", "i2c-tools", "swig", "liblgpio-dev"
+            ]
+            subprocess.run(["sudo", "apt-get", "install", "-y"] + fallback_packages, check=True)
         log_success("System packages installed successfully via apt-get.")
     except Exception as exc:
         log_warn(f"Apt package installation warning: {exc}. Ensure you have sudo privileges.")
@@ -147,12 +159,12 @@ def setup_venv(dry_run: bool = False):
 
     log_info("Checking virtual environment status...")
     if not venv_dir.exists():
-        log_info(f"Creating Python virtual environment at {venv_dir}...")
+        log_info(f"Creating Python virtual environment at {venv_dir} (with --system-site-packages)...")
         if dry_run:
             log_info(f"[Dry Run] Would create venv at {venv_dir}")
             return False
         try:
-            subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+            subprocess.run([sys.executable, "-m", "venv", "--system-site-packages", str(venv_dir)], check=True)
             log_success(f"Virtual environment created at {venv_dir}.")
             log_info(f"To activate, run: source {venv_dir}/bin/activate")
         except Exception as exc:

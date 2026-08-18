@@ -1,7 +1,13 @@
 {
-  "angle": 0,
-  "dispensed": false,
-  "reason": "No hungry fish detected",
-  "daily_count": 0,
-  "timestamp": "2026-08-12T19:39:11.804817+00:00"
+  "angle": 180,
+  "rounds": 2,
+  "dispensed": true,
+  "hungry_count": 2,
+  "daily_count": 1,
+  "hardware_actuated": false,
+  "is_automatic": true,
+  "last_dispense_time": 1787043326.2320938,
+  "last_dispense_timestamp": "2026-08-18T08:55:26.232099+00:00",
+  "cooldown_minutes": 30,
+  "timestamp": "2026-08-18T08:55:26.233264+00:00"
 }

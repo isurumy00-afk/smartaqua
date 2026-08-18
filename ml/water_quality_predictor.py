@@ -37,6 +37,11 @@ def safe_filename(text: str) -> str:
     return "".join(ch for ch in text if ch in allowed)
 
 
+def _clean_filename(path_or_str: Union[str, Path]) -> str:
+    """Normalizes Windows backslashes and POSIX forward slashes to extract bare filename."""
+    return str(path_or_str).replace("\\", "/").rstrip("/").split("/")[-1]
+
+
 def normalize_shap_values(shap_values_raw: Any) -> np.ndarray:
     """Normalizes SHAP output into shape: (rows, features)."""
     if isinstance(shap_values_raw, list):
@@ -68,41 +73,75 @@ class WaterQualityPredictor:
         self.model_runtime_type: str = "unknown"
         self.model_path: Optional[Path] = None
         self.threshold: float = DEFAULT_THRESHOLD
+        self._tree_explainer = None
 
         self._load_artifacts()
 
-    def _resolve_best_model_path(self) -> Path:
-        """Resolves path to best model file (pkl or keras)."""
-        metadata_model_path = self.metadata.get("best_model_path")
-        if metadata_model_path:
-            meta_path = Path(metadata_model_path)
-            if meta_path.exists():
-                return meta_path
-            rel_meta_path = self.model_dir / meta_path.name
-            if rel_meta_path.exists():
-                return rel_meta_path
+    def _get_candidate_model_paths(self) -> list:
+        """Returns ordered list of candidate model paths to attempt loading."""
+        candidates = []
 
-        pkl_path = self.model_dir / "best_water_quality_model.pkl"
-        keras_path = self.model_dir / "best_water_quality_model.keras"
+        # 1. Preferred model from metadata if available
+        meta_best = self.metadata.get("best_model_path")
+        if meta_best:
+            filename = _clean_filename(meta_best)
+            meta_path = self.model_dir / filename
+            if meta_path.exists() and meta_path not in candidates:
+                candidates.append(meta_path)
 
-        if pkl_path.exists():
-            return pkl_path
-        if keras_path.exists():
-            return keras_path
+        # 2. Standard model artifacts in priority order (Keras LSTM -> RFR -> LR)
+        default_names = [
+            "best_water_quality_model.keras",
+            "lstm_model.keras",
+            "rfr_model.pkl",
+            "best_water_quality_model.pkl",
+            "lr_model.pkl",
+        ]
+        for name in default_names:
+            p = self.model_dir / name
+            if p.exists() and p not in candidates:
+                candidates.append(p)
 
-        # Fallback search for any model file in model_dir
-        for alt_name in ("lstm_model.keras", "rfr_model.pkl", "lr_model.pkl"):
-            alt_path = self.model_dir / alt_name
-            if alt_path.exists():
-                return alt_path
+        return candidates
 
-        raise FileNotFoundError(
-            f"Could not find best model file in {self.model_dir}. Expected best_water_quality_model.pkl or .keras"
-        )
+    def _load_single_model(self, model_path: Path) -> bool:
+        """Attempts to load a single model file (.keras or .pkl)."""
+        model_path_str = str(model_path)
+        if model_path_str.endswith(".keras"):
+            try:
+                import tensorflow as tf
+                self.model = tf.keras.models.load_model(model_path_str)
+                self.model_runtime_type = "keras"
+                self.model_path = model_path
+                return True
+            except Exception as exc:
+                LOG.debug("Could not load Keras model from %s: %s", model_path.name, exc)
+                return False
+        else:
+            try:
+                # Provide module alias for legacy gradient boosting pickles referencing _loss
+                try:
+                    import sklearn._loss
+                    import sys
+                    sys.modules.setdefault("_loss", sklearn._loss)
+                except Exception:
+                    pass
+
+                loaded = joblib.load(model_path_str)
+                self.model = loaded
+                self.model_path = model_path
+                if hasattr(self.model, "predict_proba"):
+                    self.model_runtime_type = "sklearn_classifier"
+                else:
+                    self.model_runtime_type = "sklearn_regressor"
+                return True
+            except Exception as exc:
+                LOG.debug("Could not load scikit-learn model from %s: %s", model_path.name, exc)
+                return False
 
     def _load_artifacts(self) -> bool:
         """Load scaler, model, metadata, and SHAP background data."""
-        if self.model is not None:
+        if self.model is not None and self.scaler is not None:
             return True
 
         if not self.model_dir.exists():
@@ -117,44 +156,46 @@ class WaterQualityPredictor:
 
             scaler_path = self.model_dir / "scaler.pkl"
             if scaler_path.exists():
-                self.scaler = joblib.load(scaler_path)
+                try:
+                    self.scaler = joblib.load(scaler_path)
+                except Exception as se:
+                    LOG.warning("Failed to load scaler from %s: %s", scaler_path, se)
             else:
                 LOG.warning("Scaler not found at %s", scaler_path)
 
             shap_bg_path = self.model_dir / "shap_background.pkl"
             if shap_bg_path.exists():
-                self.shap_background = joblib.load(shap_bg_path)
+                try:
+                    self.shap_background = joblib.load(shap_bg_path)
+                except Exception as be:
+                    LOG.warning("Failed to load SHAP background from %s: %s", shap_bg_path, be)
             else:
                 LOG.warning("SHAP background not found at %s", shap_bg_path)
 
-            self.model_path = self._resolve_best_model_path()
-            model_path_str = str(self.model_path)
+            # Attempt loading models in priority order
+            candidates = self._get_candidate_model_paths()
+            model_loaded = False
+            for candidate in candidates:
+                if self._load_single_model(candidate):
+                    model_loaded = True
+                    break
 
-            if model_path_str.endswith(".keras"):
-                try:
-                    import tensorflow as tf
-                    self.model = tf.keras.models.load_model(model_path_str)
-                    self.model_runtime_type = "keras"
-                except Exception as ke:
-                    LOG.error("Failed to load Keras model from %s: %s", model_path_str, ke)
-                    raise
-            else:
-                self.model = joblib.load(model_path_str)
-                if hasattr(self.model, "predict_proba"):
-                    self.model_runtime_type = "sklearn_classifier"
-                else:
-                    self.model_runtime_type = "sklearn_regressor"
+            if not model_loaded:
+                LOG.error("Failed to load any valid water quality model artifact from %s", self.model_dir)
+                return False
 
             best_model_name = self.metadata.get("best_model")
             models_trained = self.metadata.get("models_trained", {})
             if best_model_name in models_trained:
-                self.threshold = models_trained[best_model_name].get("threshold", DEFAULT_THRESHOLD)
+                self.threshold = float(models_trained[best_model_name].get("threshold", DEFAULT_THRESHOLD))
             else:
                 self.threshold = DEFAULT_THRESHOLD
 
             LOG.info(
-                "Loaded Water Quality Model (%s, type=%s, threshold=%.2f)",
-                self.model_path.name, self.model_runtime_type, self.threshold
+                "Loaded Water Quality Model (%s, runtime=%s, threshold=%.2f)",
+                self.model_path.name if self.model_path else "unknown",
+                self.model_runtime_type,
+                self.threshold
             )
             return True
         except Exception as exc:
@@ -291,7 +332,7 @@ class WaterQualityPredictor:
             "inputs_used": features_dict,
         }
 
-        # Run SHAP Explanation if requested and background data is available
+        # Run SHAP Explanation if requested
         if run_shap:
             shap_info = self.explain_shap(df_input, save_xai=save_xai)
             result.update(shap_info)
@@ -304,62 +345,78 @@ class WaterQualityPredictor:
         sample_names: Optional[list] = None,
         save_xai: bool = False
     ) -> Dict[str, Any]:
-        """Calculates SHAP explanations for input samples using KernelExplainer."""
+        """Calculates SHAP explanations for input samples using TreeExplainer, KernelExplainer, or Heuristic fallback."""
         try:
             import shap
+            shap_lib_available = True
         except ImportError:
-            LOG.warning("SHAP library not installed. Skipping SHAP explanation.")
-            return {"shap_status": "SHAP library not installed"}
+            shap_lib_available = False
 
-        if self.shap_background is None or self.shap_background.empty:
-            LOG.warning("SHAP background data unavailable.")
-            return {"shap_status": "SHAP background unavailable"}
+        if not shap_lib_available or self.shap_background is None or self.shap_background.empty:
+            from ml.shap_explainer import explain as explain_heuristic
+            sample_dict = samples_df[FEATURES].iloc[0].to_dict() if len(samples_df) > 0 else {}
+            return explain_heuristic({"inputs_used": sample_dict})
 
-        background = self.shap_background[FEATURES].copy()
-        for col in FEATURES:
-            background[col] = pd.to_numeric(background[col], errors="coerce")
-        background = background.dropna()
+        try:
+            background = self.shap_background[FEATURES].copy()
+            for col in FEATURES:
+                background[col] = pd.to_numeric(background[col], errors="coerce")
+            background = background.dropna()
 
-        explainer = shap.KernelExplainer(
-            self.predict_bad_probability,
-            background,
-            link="identity"
-        )
+            # For Tree models (Random Forest), TreeExplainer is orders of magnitude faster
+            if self.model_runtime_type == "sklearn_regressor" and hasattr(self.model, "estimators_"):
+                if self._tree_explainer is None:
+                    self._tree_explainer = shap.TreeExplainer(self.model)
+                X_scaled = self.scaler.transform(samples_df[FEATURES]) if self.scaler is not None else samples_df[FEATURES]
+                shap_values_raw = self._tree_explainer.shap_values(X_scaled)
+                shap_values = normalize_shap_values(shap_values_raw)
+            else:
+                # KernelExplainer for Keras / LogisticRegression
+                bg_sample = background.head(30)
+                explainer = shap.KernelExplainer(
+                    self.predict_bad_probability,
+                    bg_sample,
+                    link="identity"
+                )
+                shap_values_raw = explainer.shap_values(samples_df[FEATURES], nsamples=50)
+                shap_values = normalize_shap_values(shap_values_raw)
 
-        shap_values_raw = explainer.shap_values(samples_df[FEATURES], nsamples=100)
-        shap_values = normalize_shap_values(shap_values_raw)
+            # Process first sample for dict output
+            first_shap = shap_values[0]
+            top_index = int(np.argmax(np.abs(first_shap)))
+            top_feature = FEATURES[top_index]
+            top_value = float(first_shap[top_index])
+            top_contrib_pct = float(abs(top_value) * 100)
 
-        # Process first sample for dict output
-        first_shap = shap_values[0]
-        top_index = int(np.argmax(np.abs(first_shap)))
-        top_feature = FEATURES[top_index]
-        top_value = float(first_shap[top_index])
-        top_contrib_pct = float(abs(top_value) * 100)
+            if top_value > 0:
+                effect = "Increased BAD probability"
+            elif top_value < 0:
+                effect = "Reduced BAD probability"
+            else:
+                effect = "No effect"
 
-        if top_value > 0:
-            effect = "Increased BAD probability"
-        elif top_value < 0:
-            effect = "Reduced BAD probability"
-        else:
-            effect = "No effect"
+            shap_per_feature = {
+                feature: float(first_shap[idx]) for idx, feature in enumerate(FEATURES)
+            }
 
-        shap_per_feature = {
-            feature: float(first_shap[idx]) for idx, feature in enumerate(FEATURES)
-        }
+            xai_summary = {
+                "most_contributed_feature": top_feature,
+                "top_shap_value": round(top_value, 6),
+                "top_contribution_probability_points": round(top_contrib_pct, 3),
+                "xai_effect": effect,
+                "shap_values": shap_per_feature,
+                "shap_status": "active",
+            }
 
-        xai_summary = {
-            "most_contributed_feature": top_feature,
-            "top_shap_value": round(top_value, 6),
-            "top_contribution_probability_points": round(top_contrib_pct, 3),
-            "xai_effect": effect,
-            "shap_values": shap_per_feature,
-            "shap_status": "active",
-        }
+            if save_xai and len(samples_df) > 0:
+                self._save_xai_outputs(samples_df, shap_values, sample_names)
 
-        if save_xai and len(samples_df) > 0:
-            self._save_xai_outputs(samples_df, shap_values, sample_names)
-
-        return xai_summary
+            return xai_summary
+        except Exception as exc:
+            LOG.debug("SHAP computation failed: %s, falling back to heuristic", exc)
+            from ml.shap_explainer import explain as explain_heuristic
+            sample_dict = samples_df[FEATURES].iloc[0].to_dict() if len(samples_df) > 0 else {}
+            return explain_heuristic({"inputs_used": sample_dict})
 
     def _save_xai_outputs(
         self,

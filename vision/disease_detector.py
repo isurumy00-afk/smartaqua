@@ -10,7 +10,11 @@ Model output: [1, num_classes] float32 — class probability logits / softmax
 import json
 from typing import Dict, Any, Optional
 import numpy as np
-from config import DISEASE_CLASSES_PATH, DISEASE_MODEL_ONNX_PATH
+from config import (
+    DISEASE_CLASSES_PATH,
+    DISEASE_MODEL_ONNX_PATH,
+    SEND_STRESS_ROI_TO_DISEASE,
+)
 from utils.logger import get_logger
 
 LOG = get_logger(__name__)
@@ -24,11 +28,15 @@ class DiseaseDetector:
         self.classes = None
         self.input_name: str = ""
         self.input_shape: tuple = (224, 224)  # (H, W) — updated on load
+        self._load_attempted: bool = False
 
     def _load(self) -> bool:
         """Lazy-load ONNX model and class label mappings."""
         if self.session is not None:
             return True
+        if self._load_attempted:
+            return False
+        self._load_attempted = True
 
         if not DISEASE_MODEL_ONNX_PATH.exists():
             LOG.warning("Disease ONNX model not found: %s", DISEASE_MODEL_ONNX_PATH)
@@ -78,16 +86,32 @@ class DiseaseDetector:
     # Public API
     # ------------------------------------------------------------------
 
-    def detect(self, frame, fish_id: Optional[int] = None, tracks: Optional[list] = None) -> Dict[str, Any]:
+    def detect(
+        self,
+        frame,
+        fish_id: Optional[int] = None,
+        tracks: Optional[list] = None,
+        use_roi: Optional[bool] = None,
+    ) -> Dict[str, Any]:
         """Detect disease class and confidence on a frame or per-fish crops.
 
-        When YOLOv8 tracking bounding boxes are provided via *tracks*, each
+        When YOLOv8 tracking bounding boxes are provided via *tracks* and ROI forwarding
+        is enabled (use_roi=True or SEND_STRESS_ROI_TO_DISEASE config), each
         cropped fish image is passed through the ONNX disease model individually.
         """
         if frame is None:
             return {"fish_id": fish_id, "disease_class": "Healthy", "confidence": 1.0, "per_fish_diseases": []}
 
-        if tracks:
+        if use_roi is None:
+            try:
+                from config import SEND_STRESS_ROI_TO_DISEASE
+                allow_roi = SEND_STRESS_ROI_TO_DISEASE
+            except Exception:
+                allow_roi = True
+        else:
+            allow_roi = bool(use_roi)
+
+        if tracks and allow_roi:
             return self.detect_from_tracks(frame, tracks)
 
         if not self._load():

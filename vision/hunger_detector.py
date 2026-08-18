@@ -50,11 +50,15 @@ class HungerDetector:
         self.session = None
         self.input_name: str = ""
         self.input_shape: tuple = (640, 640)
+        self._load_attempted: bool = False
 
     def _load_model(self) -> bool:
         """Lazy-load the feeding ONNX session once."""
         if self.session is not None:
             return True
+        if self._load_attempted:
+            return False
+        self._load_attempted = True
 
         if not self.model_path.exists():
             LOG.warning("Top Camera YOLOv8 feeding model not found: %s", self.model_path)

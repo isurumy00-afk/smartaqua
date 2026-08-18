@@ -16,6 +16,7 @@
     "ionconcentration_address": 20
   },
   "task_intervals": {
+    "side_stream": 0.2,
     "sensor": 1,
     "top_stream": 2,
     "manual_feed": 1,
@@ -25,10 +26,12 @@
     "watchdog": 10
   },
   "vision": {
-    "fish_confidence": 0.20,
+    "fish_confidence": 0.2,
     "max_tracked_fish": 4,
-    "top_region_percent": 0.30,
+    "top_region_percent": 0.3,
     "bottom_region_percent": 0.25,
+    "send_stress_roi_to_disease": true,
+    "send_roi_to_disease": true,
     "freeze_speed_threshold": 5.0,
     "abnormal_speed_threshold": 100.0,
     "abnormal_speed_duration": 3.0
@@ -37,9 +40,17 @@
     "pin": 12,
     "minimum_angle": 0,
     "maximum_angle": 180,
+    "feed_angles": [
+      0,
+      180,
+      180,
+      180,
+      180
+    ],
     "max_daily_feedings": 10,
     "pwm_frequency": 50,
-    "rotation_rounds": 1
+    "rotation_rounds": 1,
+    "post_feed_cooldown_minutes": 30
   },
   "dashboard": {
     "dashboard_host": "0.0.0.0",

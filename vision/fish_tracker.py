@@ -51,11 +51,15 @@ class FishTracker:
         self.fish_states: Dict[int, Dict[str, Any]] = {}
         self.last_timestamp: float = time.time()
         self._next_id: int = 1
+        self._load_attempted: bool = False
 
     def _load_model(self) -> bool:
         """Lazy-load ONNX session once."""
         if self.session is not None:
             return True
+        if self._load_attempted:
+            return False
+        self._load_attempted = True
 
         if not FISH_MODEL_ONNX_PATH.exists():
             LOG.warning("YOLOv8 ONNX model not found: %s", FISH_MODEL_ONNX_PATH)
@@ -86,7 +90,7 @@ class FishTracker:
             )
             return True
         except Exception as exc:
-            LOG.error("Failed to load YOLOv8 ONNX model: %s", exc)
+            LOG.warning("Failed to load YOLOv8 ONNX model: %s (will use synthetic/contour tracking fallback)", exc)
             self.session = None
             return False
 

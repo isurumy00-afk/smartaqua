@@ -17,6 +17,7 @@ from config import (
     DATA_DIR,
     TOP_REGION_PERCENT,
     BOTTOM_REGION_PERCENT,
+    SEND_STRESS_ROI_TO_DISEASE,
 )
 from health.watchdog import Watchdog
 from storage.json_store import load_json, save_json
@@ -292,7 +293,22 @@ def stage_sensors_and_stress():
     TARGET_FRAME_TIME = 1.0 / TARGET_FPS  # 33.3 ms per frame
     WINDOW_NAME = "AquaMonitor - Step 1: Live Stress Analysis (3 min @ 30 FPS)"
 
-    can_display = os.environ.get("HEADLESS") != "1" and (os.name == "nt" or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")))
+    # Ensure DISPLAY default for Linux desktop popups
+    if os.name != "nt" and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        os.environ["DISPLAY"] = ":0"
+
+    can_display = os.environ.get("HEADLESS") != "1"
+    if can_display:
+        try:
+            cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(WINDOW_NAME, 800, 500)
+            try:
+                cv2.startWindowThread()
+            except Exception:
+                pass
+        except Exception as exc:
+            LOG.warning("Could not initialize desktop GUI popup window (%s): %s", WINDOW_NAME, exc)
+            can_display = False
 
     start_time = time.time()
     last_stress_update = 0.0
@@ -304,7 +320,7 @@ def stage_sensors_and_stress():
     actual_dt = 0.667  # ~1.5 FPS on Pi 4B; self-corrects from frame 2 onward
     tracks = []
 
-    print(f"  |-- Starting 3-minute visual stress observation at ~30 FPS (press 'q' to skip)...")
+    print(f"  |-- Starting 3-minute visual stress observation at ~30 FPS (press 'q' in popup to skip)...")
 
     try:
         while True:
@@ -341,12 +357,20 @@ def stage_sensors_and_stress():
             proc_duration = time.time() - frame_start
             wait_ms = max(1, int((TARGET_FRAME_TIME - proc_duration) * 1000))
 
-            # Draw annotated frame and display if graphical desktop is available
+            # 1. Always generate annotated inference preview frame
+            vis_frame = _draw_analysis_overlay(
+                frame, tracks, running_stress, remaining, behavior_metrics, current_fps, dt=max(0.01, actual_dt)
+            )
+
+            # 2. Persist latest frame for Web UI Live Model Preview
+            try:
+                cv2.imwrite(str(DATA_DIR / "latest_stress_frame.jpg"), vis_frame)
+            except Exception:
+                pass
+
+            # 3. Display in desktop GUI window if graphical environment is available
             if can_display:
                 try:
-                    vis_frame = _draw_analysis_overlay(
-                        frame, tracks, running_stress, remaining, behavior_metrics, current_fps, dt=max(0.01, actual_dt)
-                    )
                     cv2.imshow(WINDOW_NAME, vis_frame)
                     key = cv2.waitKey(wait_ms) & 0xFF
                     if key == ord('q'):
@@ -388,10 +412,18 @@ def stage_disease():
     """Stage 2: Visual CV disease detection & NLP symptom fusion."""
     print("\n[2/5] Disease Detection & Symptom Fusion...")
     frame = SIDE_CAMERA.read()
-    tracks = FISH_TRACKER.track(frame)
-    detection = DISEASE_DETECTOR.detect(frame, tracks=tracks)
 
-    user_symptom_data = fetch_user_symptom()
+    # Dynamic check in case configuration was updated at runtime
+    from config import SEND_STRESS_ROI_TO_DISEASE
+    if SEND_STRESS_ROI_TO_DISEASE:
+        tracks = FISH_TRACKER.track(frame)
+        print(f"  |-- Visual Stress ROI forwarding: ENABLED ({len(tracks)} fish tracks forwarded as ROI crops)")
+        detection = DISEASE_DETECTOR.detect(frame, tracks=tracks, use_roi=True)
+    else:
+        print("  |-- Visual Stress ROI forwarding: DISABLED (performing whole-frame disease diagnosis)")
+        detection = DISEASE_DETECTOR.detect(frame, tracks=None, use_roi=False)
+
+    user_symptom_data = fetch_user_symptoms() if "fetch_user_symptoms" in globals() else fetch_user_symptom()
     symptom_text = user_symptom_data.get("text", "")
     nlp_results = process_symptoms(symptom_text)
 
@@ -404,6 +436,30 @@ def stage_disease():
 
 def stage_hunger_and_feeding():
     """Stage 3: Top view 3-minute continuous hunger monitoring, temporal averaging & automatic feeding."""
+    # ── 1. Check Post-Dispense Cooldown Setting ──
+    in_cooldown, remaining_secs = FEEDER_SERVO.is_in_cooldown()
+    if in_cooldown:
+        rem_mins = round(remaining_secs / 60.0, 1)
+        print(f"\n[3/5] Top Camera Hunger Observation (Post-Feed Cooldown: {rem_mins} min remaining)...")
+        print(f"  |-- Post-feeding cooldown active ({rem_mins}m / {int(remaining_secs)}s remaining).")
+        print(f"  +-- Skipping feeding activity check until cooldown expires ({getattr(FEEDER_SERVO.config, 'post_feed_cooldown_minutes', 30)} min total).")
+        hunger_summary = {
+            "hungry_count": 0,
+            "average_count": 0.0,
+            "presence_ratio": 0.0,
+            "is_truly_hungry": False,
+            "hunger_level": "Cooldown",
+            "confidence": 0.0,
+            "observation_duration_seconds": 0.0,
+            "frames_analyzed": 0,
+            "cooldown_active": True,
+            "cooldown_remaining_seconds": int(remaining_secs),
+            "cooldown_total_minutes": getattr(FEEDER_SERVO.config, "post_feed_cooldown_minutes", 30),
+            "source": "post_feed_cooldown_bypass",
+        }
+        save_json(DATA_DIR / "latest_hunger.json", hunger_summary)
+        return
+
     print("\n[3/5] Top Camera Hunger Observation (3 min continuous monitoring)...")
 
     HUNGER_OBSERVATION_DURATION = 180  # 3 minutes
@@ -411,7 +467,22 @@ def stage_hunger_and_feeding():
     TARGET_FRAME_TIME = 1.0 / TARGET_FPS
     WINDOW_NAME = "AquaMonitor - Step 3: Top Camera Hunger Monitoring (3 min @ 30 FPS)"
 
-    can_display = os.environ.get("HEADLESS") != "1" and (os.name == "nt" or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")))
+    # Ensure DISPLAY default for Linux desktop popups
+    if os.name != "nt" and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        os.environ["DISPLAY"] = ":0"
+
+    can_display = os.environ.get("HEADLESS") != "1"
+    if can_display:
+        try:
+            cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(WINDOW_NAME, 800, 500)
+            try:
+                cv2.startWindowThread()
+            except Exception:
+                pass
+        except Exception as exc:
+            LOG.warning("Could not initialize desktop GUI popup window (%s): %s", WINDOW_NAME, exc)
+            can_display = False
 
     start_time = time.time()
     sample_counts: List[int] = []
@@ -422,7 +493,7 @@ def stage_hunger_and_feeding():
     last_frame_time = time.time()
     actual_dt = 0.667
 
-    print("  |-- Monitoring Top Camera for 3 minutes to evaluate sustained hunger (press 'q' to skip)...")
+    print("  |-- Monitoring Top Camera for 3 minutes to evaluate sustained hunger (press 'q' in popup to skip)...")
 
     try:
         while True:
@@ -460,17 +531,26 @@ def stage_hunger_and_feeding():
             proc_duration = time.time() - frame_start
             wait_ms = max(1, int((TARGET_FRAME_TIME - proc_duration) * 1000))
 
+            # 1. Always generate annotated hunger inference preview frame
+            vis_frame = _draw_hunger_overlay(
+                frame,
+                latest_detections,
+                current_count,
+                running_avg,
+                presence_ratio,
+                remaining,
+                current_fps,
+            )
+
+            # 2. Persist latest frame for Web UI Live Model Preview
+            try:
+                cv2.imwrite(str(DATA_DIR / "latest_hunger_frame.jpg"), vis_frame)
+            except Exception:
+                pass
+
+            # 3. Display in desktop GUI window if graphical environment is available
             if can_display:
                 try:
-                    vis_frame = _draw_hunger_overlay(
-                        frame,
-                        latest_detections,
-                        current_count,
-                        running_avg,
-                        presence_ratio,
-                        remaining,
-                        current_fps,
-                    )
                     cv2.imshow(WINDOW_NAME, vis_frame)
                     key = cv2.waitKey(wait_ms) & 0xFF
                     if key == ord('q'):
@@ -547,7 +627,11 @@ def stage_hunger_and_feeding():
     print(f"  |-- Observation Complete: {observation_secs}s ({total_samples} frames sampled)")
     print(f"  |-- Avg Surface Fish: {avg_hungry_count:.2f} | Surface Attendance: {presence_ratio * 100:.1f}%")
     print(f"  |-- Hunger Status: {'CONFIRMED HUNGRY' if is_truly_hungry else 'NOT HUNGRY (Transient/Normal)'} (Count: {final_hungry_count}, Level: {hunger_level})")
-    print(f"  +-- Dispensed Portion: {feed_result.get('dispensed', False)} (Rounds: {feed_result.get('rounds', 0)})")
+    if feed_result.get("dispensed", False):
+        cooldown_mins = getattr(FEEDER_SERVO.config, "post_feed_cooldown_minutes", 30)
+        print(f"  +-- Dispensed Portion: True (Rounds: {feed_result.get('rounds', 0)}) -> Cooldown active: no feeding activity checks for {cooldown_mins} mins.")
+    else:
+        print(f"  +-- Dispensed Portion: False (Rounds: 0)")
 
 
 def stage_water_quality_and_shap():

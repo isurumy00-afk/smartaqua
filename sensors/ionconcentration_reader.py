@@ -27,11 +27,21 @@ class IonConcentrationReader:
         self.device_id = SENSOR_CONFIG.get("ionconcentration_device_id", 1)
         self.address = SENSOR_CONFIG.get("ionconcentration_address", 20)
 
-    def _create_client(self):
+    def _get_candidate_ports(self) -> list:
+        candidates = [self.port]
+        import os
+        from pathlib import Path
+        if os.name != "nt":
+            for p in ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0", "/dev/ttyACM1"]:
+                if p not in candidates and Path(p).exists():
+                    candidates.append(p)
+        return candidates
+
+    def _create_client(self, port: str):
         """Create PyModbus serial client instance."""
         from pymodbus.client import ModbusSerialClient
         return ModbusSerialClient(
-            port=self.port,
+            port=port,
             baudrate=self.baudrate,
             bytesize=self.bytesize,
             parity=self.parity,
@@ -46,58 +56,53 @@ class IonConcentrationReader:
         {"value": float | None, "unit": "us/cm", "timestamp": str, "source": "modbus_rtu"}
         """
         timestamp = datetime.now(timezone.utc).isoformat()
-        try:
-            client = self._create_client()
-            if not client.connect():
-                LOG.warning("Cannot connect to ion concentration Modbus device on %s", self.port)
-                return {
-                    "value": None,
-                    "unit": "us/cm",
-                    "timestamp": timestamp,
-                    "error": f"Cannot connect to serial port {self.port}"
-                }
+        candidates = self._get_candidate_ports()
 
+        last_error = "Cannot connect to serial port"
+        for p in candidates:
             try:
-                try:
-                    rr = client.read_holding_registers(
-                        address=self.address,
-                        count=1,
-                        device_id=self.device_id
-                    )
-                except TypeError:
-                    # Fallback for PyModbus versions using slave keyword argument
-                    rr = client.read_holding_registers(
-                        address=self.address,
-                        count=1,
-                        slave=self.device_id
-                    )
+                client = self._create_client(p)
+                if not client.connect():
+                    continue
 
-                if rr is None or rr.isError():
-                    LOG.warning("Modbus read error on ion concentration sensor (port: %s)", self.port)
+                try:
+                    try:
+                        rr = client.read_holding_registers(
+                            address=self.address,
+                            count=1,
+                            device_id=self.device_id
+                        )
+                    except TypeError:
+                        # Fallback for PyModbus versions using slave keyword argument
+                        rr = client.read_holding_registers(
+                            address=self.address,
+                            count=1,
+                            slave=self.device_id
+                        )
+
+                    if rr is None or rr.isError():
+                        last_error = "Modbus Read Error"
+                        continue
+
                     return {
-                        "value": None,
+                        "value": float(rr.registers[0]),
                         "unit": "us/cm",
                         "timestamp": timestamp,
-                        "error": "Modbus Read Error"
+                        "source": "modbus_rtu"
                     }
+                finally:
+                    client.close()
 
-                return {
-                    "value": float(rr.registers[0]),
-                    "unit": "us/cm",
-                    "timestamp": timestamp,
-                    "source": "modbus_rtu"
-                }
-            finally:
-                client.close()
+            except Exception as exc:
+                last_error = str(exc)
+                LOG.debug("Modbus attempt failed on %s: %s", p, exc)
 
-        except Exception as exc:
-            LOG.warning("Ion concentration sensor read failed on %s: %s", self.port, exc)
-            return {
-                "value": None,
-                "unit": "us/cm",
-                "timestamp": timestamp,
-                "error": str(exc)
-            }
+        return {
+            "value": None,
+            "unit": "us/cm",
+            "timestamp": timestamp,
+            "error": last_error
+        }
 
 
 def read() -> Dict[str, Any]:

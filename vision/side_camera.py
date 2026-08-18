@@ -48,14 +48,21 @@ class SideCamera:
         if self.capture is None or not self.capture.isOpened():
             try:
                 # Attempt primary camera index
-                self.capture = cv2.VideoCapture(self.index)
+                if os.name != 'nt':
+                    self.capture = cv2.VideoCapture(self.index, cv2.CAP_V4L2)
+                else:
+                    self.capture = cv2.VideoCapture(self.index)
+
                 if not self.capture or not self.capture.isOpened():
-                    # Attempt Windows DirectShow fallback or index 0
-                    if os.name == 'nt':
-                        self.capture = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
+                    # Attempt standard fallback
+                    self.capture = cv2.VideoCapture(self.index)
                     if not self.capture or not self.capture.isOpened():
-                        LOG.warning("Hardware Camera (index %s) is unavailable. Switching to live synthetic video feed.", self.index)
-                        self._failed_hw = True
+                        # Attempt Windows DirectShow fallback
+                        if os.name == 'nt':
+                            self.capture = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
+                        if not self.capture or not self.capture.isOpened():
+                            LOG.warning("Hardware Camera (index %s) is unavailable. Switching to live synthetic video feed.", self.index)
+                            self._failed_hw = True
             except Exception as exc:
                 LOG.warning("Failed to open Camera (index %s): %s", self.index, exc)
                 self.capture = None

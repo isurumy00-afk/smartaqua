@@ -37,8 +37,21 @@ _CACHE_TTL = 2.0  # seconds
 _ser = None
 
 
+def _get_candidate_ports(primary_port: str) -> list:
+    """Return ordered list of candidate serial ports on Linux/Debian & Windows."""
+    candidates = [primary_port]
+    import os
+    if os.name != "nt":
+        # Arduino Uno frequently connects as /dev/ttyACM0 or /dev/ttyACM1 on Debian Linux
+        alt_ports = ["/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyUSB1", "/dev/ttyUSB0", "/dev/ttyAMA0"]
+        for p in alt_ports:
+            if p not in candidates:
+                candidates.append(p)
+    return candidates
+
+
 def _get_serial_connection(port: str, baudrate: int):
-    """Obtain or reconnect to persistent Serial port without continuous resetting."""
+    """Obtain or reconnect to persistent Serial port with automatic fallback probing."""
     global _ser
     if _ser is not None:
         try:
@@ -47,21 +60,33 @@ def _get_serial_connection(port: str, baudrate: int):
         except Exception:
             _ser = None
 
-    try:
-        import serial
-        _ser = serial.Serial(
-            port=port,
-            baudrate=baudrate,
-            timeout=2.0,
-            dsrdtr=False,
-            rtscts=False,
-        )
-        _ser.reset_input_buffer()
-        return _ser
-    except Exception as exc:
-        LOG.debug("Arduino serial connection error on %s: %s", port, exc)
-        _ser = None
-        return None
+    import serial
+    candidates = _get_candidate_ports(port)
+
+    for p in candidates:
+        import os
+        from pathlib import Path
+        # On Linux, only attempt ports that exist in /dev
+        if os.name != "nt" and not Path(p).exists():
+            continue
+
+        try:
+            ser_obj = serial.Serial(
+                port=p,
+                baudrate=baudrate,
+                timeout=2.0,
+                dsrdtr=False,
+                rtscts=False,
+            )
+            ser_obj.reset_input_buffer()
+            _ser = ser_obj
+            LOG.info("Connected to Arduino Uno on serial port %s (%d baud)", p, baudrate)
+            return _ser
+        except Exception as exc:
+            LOG.debug("Could not connect to Arduino Uno on port %s: %s", p, exc)
+
+    _ser = None
+    return None
 
 
 def _read_serial_once() -> Dict[str, Any]:

@@ -1,6 +1,15 @@
 {
-  "hungry_fish_ids": [],
   "hungry_count": 0,
+  "average_count": 0.0,
+  "presence_ratio": 0.0,
+  "is_truly_hungry": false,
+  "hunger_level": "Cooldown",
   "confidence": 0.0,
-  "timestamp": "2026-08-12T19:39:11.800473+00:00"
+  "observation_duration_seconds": 0.0,
+  "frames_analyzed": 0,
+  "cooldown_active": true,
+  "cooldown_remaining_seconds": 1792,
+  "cooldown_total_minutes": 30,
+  "source": "post_feed_cooldown_bypass",
+  "timestamp": "2026-08-18T03:53:20.181638+00:00"
 }
